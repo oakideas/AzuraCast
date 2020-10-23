@@ -1,11 +1,9 @@
 <?php
+
 namespace App\Entity;
 
 use App\Annotations\AuditLog;
 use App\Normalizer\Annotation\DeepNormalize;
-use Carbon\CarbonImmutable;
-use Carbon\CarbonInterface;
-use DateTimeZone;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
@@ -281,8 +279,8 @@ class StationPlaylist
     {
         $this->station = $station;
 
-        $this->media_items = new ArrayCollection;
-        $this->schedule_items = new ArrayCollection;
+        $this->media_items = new ArrayCollection();
+        $this->schedule_items = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -297,7 +295,6 @@ class StationPlaylist
 
     /**
      * @AuditLog\AuditIdentifier
-     * @return string
      */
     public function getName(): string
     {
@@ -404,25 +401,6 @@ class StationPlaylist
         $this->is_jingle = $is_jingle;
     }
 
-    /**
-     * @return int Get the duration of scheduled play time in seconds (used for remote URLs of indeterminate length).
-     */
-    public function getScheduleDuration(): int
-    {
-        if ($this->schedule_items->count() > 0) {
-            $now = CarbonImmutable::now(new DateTimeZone($this->getStation()->getTimezone()));
-
-            foreach ($this->schedule_items as $scheduleItem) {
-                /** @var StationSchedule $scheduleItem */
-                if ($scheduleItem->shouldPlayNow($now)) {
-                    return $scheduleItem->getDuration();
-                }
-            }
-        }
-
-        return 0;
-    }
-
     public function getWeight(): int
     {
         if ($this->weight < 1) {
@@ -459,8 +437,6 @@ class StationPlaylist
 
     /**
      * Indicates whether this playlist can be used as a valid source of requestable media.
-     *
-     * @return bool
      */
     public function isRequestable(): bool
     {
@@ -497,14 +473,63 @@ class StationPlaylist
         $this->played_at = $played_at;
     }
 
+    /**
+     * @return mixed[]|null
+     */
     public function getQueue(): ?array
     {
-        return $this->queue;
+        if (null === $this->queue) {
+            return null;
+        }
+
+        // Ensure queue is always formatted correctly.
+        $newQueue = [];
+        foreach ($this->queue as $media) {
+            $newQueue[$media['id']] = $media;
+        }
+        return $newQueue;
     }
 
     public function setQueue(?array $queue): void
     {
         $this->queue = $queue;
+    }
+
+    public function removeFromQueue(StationMedia $media): void
+    {
+        $queue = $this->getQueue();
+
+        if (null !== $queue) {
+            unset($queue[$media->getId()]);
+            $this->queue = $queue;
+        }
+    }
+
+    public function addToQueue(StationMedia $media): void
+    {
+        $queue = $this->getQueue();
+        if (null === $queue) {
+            return;
+        }
+
+        $queue[$media->getId()] = [
+            'id' => $media->getId(),
+            'song_id' => $media->getSongId(),
+            'artist' => $media->getArtist(),
+            'title' => $media->getTitle(),
+        ];
+
+        if (self::ORDER_SEQUENTIAL !== $this->getOrder()) {
+            shuffle($queue);
+
+            $newQueue = [];
+            foreach ($queue as $row) {
+                $newQueue[$row['id']] = $row;
+            }
+            $queue = $newQueue;
+        }
+
+        $this->setQueue($queue);
     }
 
     /**
@@ -525,13 +550,17 @@ class StationPlaylist
 
     /**
      * Indicates whether a playlist is enabled and has content which can be scheduled by an AutoDJ scheduler.
-     *
-     * @return bool
      */
     public function isPlayable(): bool
     {
         // Any "advanced" settings are not managed by AzuraCast AutoDJ.
-        if (!$this->is_enabled || $this->backendInterruptOtherSongs() || $this->backendMerge() || $this->backendLoopPlaylistOnce()) {
+        if (
+            !$this->is_enabled
+            || $this->backendInterruptOtherSongs()
+            || $this->backendMerge()
+            || $this->backendLoopPlaylistOnce()
+            || $this->backendPlaySingleTrack()
+        ) {
             return false;
         }
 
@@ -543,6 +572,9 @@ class StationPlaylist
         return self::REMOTE_TYPE_PLAYLIST === $this->remote_type;
     }
 
+    /**
+     * @return string[]
+     */
     public function getBackendOptions(): array
     {
         $settings = \App\Settings::getInstance();
@@ -585,92 +617,6 @@ class StationPlaylist
         return in_array(self::OPTION_PLAY_SINGLE_TRACK, $backend_options, true);
     }
 
-    /**
-     * Parent function for determining whether a playlist of any type can be played by the AutoDJ.
-     *
-     * @param CarbonInterface|null $now
-     * @param array $recentSongHistory
-     *
-     * @return bool
-     */
-    public function shouldPlayNow(CarbonInterface $now = null, array $recentSongHistory = []): bool
-    {
-        if (null === $now) {
-            $now = CarbonImmutable::now(new DateTimeZone($this->getStation()->getTimezone()));
-        }
-
-        if (!$this->isScheduledToPlayNow($now)) {
-            return false;
-        }
-
-        switch ($this->type) {
-            case self::TYPE_ONCE_PER_HOUR:
-                return $this->shouldPlayNowPerHour($now);
-                break;
-
-            case self::TYPE_ONCE_PER_X_SONGS:
-                return !$this->wasPlayedRecently($recentSongHistory, $this->getPlayPerSongs());
-                break;
-
-            case self::TYPE_ONCE_PER_X_MINUTES:
-                return $this->shouldPlayNowPerMinute($now);
-                break;
-
-            case self::TYPE_ADVANCED:
-                return false;
-                break;
-
-            case self::TYPE_DEFAULT:
-            default:
-                return true;
-                break;
-        }
-    }
-
-    protected function isScheduledToPlayNow(CarbonInterface $now): bool
-    {
-        if (0 === $this->schedule_items->count()) {
-            return true;
-        }
-
-        foreach ($this->schedule_items as $scheduleItem) {
-            /** @var StationSchedule $scheduleItem */
-            if ($scheduleItem->shouldPlayNow($now)) {
-                $startTime = $scheduleItem->getStartTime();
-                $endTime = $scheduleItem->getEndTime();
-
-                if (
-                    $startTime !== $endTime
-                    || ($startTime === $endTime && !$this->wasPlayedInLastXMinutes($now, 30))
-                ) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    protected function shouldPlayNowPerHour(CarbonInterface $now): bool
-    {
-        $current_minute = (int)$now->minute;
-        $target_minute = $this->getPlayPerHourMinute();
-
-        if ($current_minute < $target_minute) {
-            $target_time = $now->subHour()->minute($target_minute);
-        } else {
-            $target_time = $now->minute($target_minute);
-        }
-
-        $playlist_diff = $target_time->diffInMinutes($now, false);
-
-        if ($playlist_diff < 0 || $playlist_diff > 15) {
-            return false;
-        }
-
-        return !$this->wasPlayedInLastXMinutes($now, 30);
-    }
-
     public function getPlayPerHourMinute(): int
     {
         return $this->play_per_hour_minute;
@@ -685,37 +631,6 @@ class StationPlaylist
         $this->play_per_hour_minute = $play_per_hour_minute;
     }
 
-    public function wasPlayedInLastXMinutes(CarbonInterface $now, int $minutes): bool
-    {
-        if (0 === $this->played_at) {
-            return false;
-        }
-
-        $threshold = $now->subMinutes($minutes)->getTimestamp();
-        return ($this->played_at > $threshold);
-    }
-
-    protected function wasPlayedRecently(array $songHistoryEntries = [], $length = 15): bool
-    {
-        if (empty($songHistoryEntries)) {
-            return true;
-        }
-
-        // Check if already played
-        $relevant_song_history = array_slice($songHistoryEntries, 0, $length);
-
-        $was_played = false;
-        foreach ($relevant_song_history as $sh_row) {
-            if ((int)$sh_row['playlist_id'] === $this->id) {
-                $was_played = true;
-                break;
-            }
-        }
-
-        reset($songHistoryEntries);
-        return $was_played;
-    }
-
     public function getPlayPerSongs(): int
     {
         return $this->play_per_songs;
@@ -726,18 +641,14 @@ class StationPlaylist
         $this->play_per_songs = $play_per_songs;
     }
 
-    protected function shouldPlayNowPerMinute(CarbonInterface $now): bool
-    {
-        return !$this->wasPlayedInLastXMinutes($now, $this->getPlayPerMinutes());
-    }
-
     public function getPlayPerMinutes(): int
     {
         return $this->play_per_minutes;
     }
 
-    public function setPlayPerMinutes(int $play_per_minutes): void
-    {
+    public function setPlayPerMinutes(
+        int $play_per_minutes
+    ): void {
         $this->play_per_minutes = $play_per_minutes;
     }
 
@@ -747,11 +658,12 @@ class StationPlaylist
      * @param string $file_format
      * @param bool $absolute_paths
      * @param bool $with_annotations
-     *
-     * @return string
      */
-    public function export($file_format = 'pls', $absolute_paths = false, $with_annotations = false): string
-    {
+    public function export(
+        $file_format = 'pls',
+        $absolute_paths = false,
+        $with_annotations = false
+    ): string {
         $media_path = ($absolute_paths) ? $this->station->getRadioMediaDir() . '/' : '';
 
         switch ($file_format) {
@@ -764,7 +676,6 @@ class StationPlaylist
                 }
 
                 return implode("\n", $playlist_file);
-                break;
 
             case 'pls':
             default:
@@ -788,7 +699,6 @@ class StationPlaylist
                 $playlist_file[] = 'Version=2';
 
                 return implode("\n", $playlist_file);
-                break;
         }
     }
 }

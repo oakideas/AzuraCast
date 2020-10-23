@@ -1,11 +1,14 @@
 <?php
+
 namespace App\Controller\Admin;
 
+use App\Console\Application;
 use App\Entity;
 use App\Http\Response;
 use App\Http\ServerRequest;
 use App\Radio\AutoDJ;
 use App\Radio\Backend\Liquidsoap;
+use App\Session\Flash;
 use App\Sync\Runner;
 use Doctrine\ORM\EntityManagerInterface;
 use Monolog\Handler\TestHandler;
@@ -18,9 +21,13 @@ class DebugController
 
     protected TestHandler $testHandler;
 
-    public function __construct(Logger $logger)
+    protected Application $console;
+
+    public function __construct(Logger $logger, Application $console)
     {
         $this->logger = $logger;
+        $this->console = $console;
+
         $this->testHandler = new TestHandler(Logger::DEBUG, false);
     }
 
@@ -82,10 +89,8 @@ class DebugController
 
         $station = $request->getStation();
 
-        $em->createQuery(/** @lang DQL */ 'DELETE FROM App\Entity\SongHistory sh
-            WHERE sh.station = :station
-            AND sh.timestamp_cued != 0
-            AND sh.timestamp_start = 0')
+        $em->createQuery(/** @lang DQL */ 'DELETE FROM App\Entity\StationQueue sq
+            WHERE sq.station = :station')
             ->setParameter('station', $station)
             ->execute();
 
@@ -127,5 +132,33 @@ class DebugController
             'title' => __('Debug Output'),
             'log_records' => $this->testHandler->getRecords(),
         ]);
+    }
+
+    public function clearCacheAction(
+        ServerRequest $request,
+        Response $response
+    ): ResponseInterface {
+        [$resultCode, $resultOutput] = $this->console->runCommandWithArgs(
+            'cache:clear'
+        );
+
+        // Flash an update to ensure the session is recreated.
+        $request->getFlash()->addMessage($resultOutput, Flash::SUCCESS);
+
+        return $response->withRedirect($request->getRouter()->fromHere('admin:debug:index'));
+    }
+
+    public function clearQueueAction(
+        ServerRequest $request,
+        Response $response
+    ): ResponseInterface {
+        [$resultCode, $resultOutput] = $this->console->runCommandWithArgs(
+            'queue:clear'
+        );
+
+        // Flash an update to ensure the session is recreated.
+        $request->getFlash()->addMessage($resultOutput, Flash::SUCCESS);
+
+        return $response->withRedirect($request->getRouter()->fromHere('admin:debug:index'));
     }
 }

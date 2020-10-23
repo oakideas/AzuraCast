@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -77,7 +78,7 @@ class Settings
     protected $setting_key;
 
     /**
-     * @ORM\Column(name="setting_value", type="json_array", nullable=true)
+     * @ORM\Column(name="setting_value", type="json", nullable=true)
      * @var mixed
      */
     protected $setting_value;
@@ -92,16 +93,22 @@ class Settings
         return $this->setting_key;
     }
 
+    /**
+     * @return mixed
+     */
     public function getSettingValue()
     {
         return $this->setting_value;
     }
 
-    public function setSettingValue($setting_value)
+    public function setSettingValue($setting_value): void
     {
         $this->setting_value = $setting_value;
     }
 
+    /**
+     * @return mixed
+     */
     public function getValue()
     {
         return $this->setting_value;

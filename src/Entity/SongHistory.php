@@ -1,21 +1,21 @@
 <?php
+
 namespace App\Entity;
 
 use App\ApiUtilities;
 use Doctrine\ORM\Mapping as ORM;
-use Psr\Http\Message\UriInterface;
 
 /**
  * @ORM\Table(name="song_history", indexes={
- *     @ORM\Index(name="idx_timestamp_cued", columns={"timestamp_cued"}),
  *     @ORM\Index(name="idx_timestamp_start", columns={"timestamp_start"}),
  *     @ORM\Index(name="idx_timestamp_end", columns={"timestamp_end"})
  * })
  * @ORM\Entity()
  */
-class SongHistory
+class SongHistory implements SongInterface
 {
     use Traits\TruncateInts;
+    use Traits\HasSongFields;
 
     /** @var int The expected delay between when a song history record is registered and when listeners hear it. */
     public const PLAYBACK_DELAY_SECONDS = 5;
@@ -30,21 +30,6 @@ class SongHistory
      * @var int
      */
     protected $id;
-
-    /**
-     * @ORM\Column(name="song_id", type="string", length=50)
-     * @var string
-     */
-    protected $song_id;
-
-    /**
-     * @ORM\ManyToOne(targetEntity="Song", inversedBy="history")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="song_id", referencedColumnName="id", onDelete="CASCADE")
-     * })
-     * @var Song
-     */
-    protected $song;
 
     /**
      * @ORM\Column(name="station_id", type="integer")
@@ -122,24 +107,6 @@ class SongHistory
     protected $request;
 
     /**
-     * @ORM\Column(name="autodj_custom_uri", type="string", length=255, nullable=true)
-     * @var string|null
-     */
-    protected $autodj_custom_uri;
-
-    /**
-     * @ORM\Column(name="timestamp_cued", type="integer", nullable=true)
-     * @var int|null
-     */
-    protected $timestamp_cued;
-
-    /**
-     * @ORM\Column(name="sent_to_autodj", type="boolean")
-     * @var bool
-     */
-    protected $sent_to_autodj;
-
-    /**
      * @ORM\Column(name="timestamp_start", type="integer")
      * @var int
      */
@@ -194,18 +161,18 @@ class SongHistory
     protected $delta_negative;
 
     /**
-     * @ORM\Column(name="delta_points", type="json_array", nullable=true)
+     * @ORM\Column(name="delta_points", type="json", nullable=true)
      * @var mixed|null
      */
     protected $delta_points;
 
-    public function __construct(Song $song, Station $station)
-    {
-        $this->song = $song;
-        $this->station = $station;
+    public function __construct(
+        Station $station,
+        SongInterface $song
+    ) {
+        $this->setSong($song);
 
-        $this->sent_to_autodj = false;
-        $this->timestamp_cued = 0;
+        $this->station = $station;
 
         $this->timestamp_start = 0;
         $this->listeners_start = 0;
@@ -223,11 +190,6 @@ class SongHistory
     public function getId(): int
     {
         return $this->id;
-    }
-
-    public function getSong(): Song
-    {
-        return $this->song;
     }
 
     public function getStation(): Station
@@ -277,41 +239,6 @@ class SongHistory
     public function setRequest($request): void
     {
         $this->request = $request;
-    }
-
-    public function getAutodjCustomUri(): ?string
-    {
-        return $this->autodj_custom_uri;
-    }
-
-    public function setAutodjCustomUri(?string $autodj_custom_uri): void
-    {
-        $this->autodj_custom_uri = $autodj_custom_uri;
-    }
-
-    public function getTimestampCued(): ?int
-    {
-        return $this->timestamp_cued;
-    }
-
-    public function setTimestampCued($timestamp_cued): void
-    {
-        $this->timestamp_cued = $timestamp_cued;
-    }
-
-    public function getSentToAutodj(): bool
-    {
-        return $this->sent_to_autodj;
-    }
-
-    public function sentToAutodj(): void
-    {
-        $cued = $this->getTimestampCued();
-        if (null === $cued || 0 === $cued) {
-            $this->setTimestampCued(time());
-        }
-
-        $this->sent_to_autodj = true;
     }
 
     public function getTimestampStart(): int
@@ -395,7 +322,7 @@ class SongHistory
 
     public function setDeltaTotal(int $delta_total): void
     {
-        $this->delta_total = $this->_truncateSmallInt($delta_total);
+        $this->delta_total = $this->truncateSmallInt($delta_total);
     }
 
     public function getDeltaPositive(): int
@@ -405,7 +332,7 @@ class SongHistory
 
     public function setDeltaPositive(int $delta_positive): void
     {
-        $this->delta_positive = $this->_truncateSmallInt($delta_positive);
+        $this->delta_positive = $this->truncateSmallInt($delta_positive);
     }
 
     public function getDeltaNegative(): int
@@ -415,9 +342,12 @@ class SongHistory
 
     public function setDeltaNegative(int $delta_negative): void
     {
-        $this->delta_negative = $this->_truncateSmallInt($delta_negative);
+        $this->delta_negative = $this->truncateSmallInt($delta_negative);
     }
 
+    /**
+     * @return mixed
+     */
     public function getDeltaPoints()
     {
         return $this->delta_points;
@@ -441,58 +371,23 @@ class SongHistory
         return true;
     }
 
-    /**
-     * @param Api\SongHistory $response
-     * @param ApiUtilities $api
-     * @param UriInterface|null $base_url
-     *
-     * @return Api\SongHistory
-     */
-    public function api(Api\SongHistory $response, ApiUtilities $api, UriInterface $base_url = null)
+    public function __toString(): string
     {
-        $response->sh_id = (int)$this->id;
-
-        $response->played_at = (0 === (int)$this->timestamp_start)
-            ? 0
-            : (int)$this->timestamp_start + self::PLAYBACK_DELAY_SECONDS;
-
-        $response->duration = (int)$this->duration;
-        $response->is_request = $this->request !== null;
-
-        if ($this->playlist instanceof StationPlaylist) {
-            $response->playlist = $this->playlist->getName();
-        } else {
-            $response->playlist = '';
+        if ($this->media instanceof StationMedia) {
+            return (string)$this->media;
         }
 
-        if ($this->streamer instanceof StationStreamer) {
-            $response->streamer = $this->streamer->getDisplayName();
-        } else {
-            $response->streamer = '';
-        }
-
-        if ($response instanceof Api\DetailedSongHistory) {
-            $response->listeners_start = (int)$this->listeners_start;
-            $response->listeners_end = (int)$this->listeners_end;
-            $response->delta_total = (int)$this->delta_total;
-        }
-
-        if ($response instanceof Api\QueuedSong) {
-            $response->cued_at = (int)$this->timestamp_cued;
-            $response->autodj_custom_uri = $this->autodj_custom_uri;
-        }
-
-        $response->song = ($this->media)
-            ? $this->media->api($api, $base_url)
-            : $this->song->api($api, $this->station, $base_url);
-
-        return $response;
+        return (string)(new Song($this));
     }
 
-    public function __toString()
+    public static function fromQueue(StationQueue $queue): self
     {
-        return (null !== $this->media)
-            ? (string)$this->media
-            : (string)$this->song;
+        $sh = new self($queue->getStation(), $queue);
+        $sh->setMedia($queue->getMedia());
+        $sh->setRequest($queue->getRequest());
+        $sh->setPlaylist($queue->getPlaylist());
+        $sh->setDuration($queue->getDuration());
+
+        return $sh;
     }
 }

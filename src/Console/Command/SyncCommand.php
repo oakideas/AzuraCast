@@ -1,19 +1,16 @@
 <?php
+
 namespace App\Console\Command;
 
 use App;
-use App\Service\UptimeWait;
 use App\Sync\Runner;
 
 class SyncCommand extends CommandAbstract
 {
     public function __invoke(
         Runner $sync,
-        UptimeWait $uptimeWait,
         string $task = 'nowplaying'
-    ) {
-        $uptimeWait->waitForAll();
-
+    ): int {
         switch ($task) {
             case 'long':
                 $sync->syncLong();

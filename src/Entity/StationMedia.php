@@ -1,15 +1,15 @@
 <?php
+
 namespace App\Entity;
 
 use App\Annotations\AuditLog;
-use App\ApiUtilities;
 use App\Flysystem\Filesystem;
+use App\Media\Metadata;
 use App\Normalizer\Annotation\DeepNormalize;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use OpenApi\Annotations as OA;
-use Psr\Http\Message\UriInterface;
 use Symfony\Component\Serializer\Annotation as Serializer;
 
 /**
@@ -22,9 +22,11 @@ use Symfony\Component\Serializer\Annotation as Serializer;
  *
  * @OA\Schema(type="object")
  */
-class StationMedia
+class StationMedia implements SongInterface
 {
-    use Traits\UniqueId, Traits\TruncateStrings;
+    use Traits\UniqueId;
+    use Traits\TruncateStrings;
+    use Traits\HasSongFields;
 
     public const UNIQUE_ID_LENGTH = 24;
 
@@ -55,42 +57,6 @@ class StationMedia
     protected $station;
 
     /**
-     * @ORM\Column(name="song_id", type="string", length=50, nullable=true)
-     *
-     * @OA\Property(example="098F6BCD4621D373CADE4E832627B4F6")
-     *
-     * @var string|null
-     */
-    protected $song_id;
-
-    /**
-     * @ORM\ManyToOne(targetEntity="Song")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="song_id", referencedColumnName="id", onDelete="SET NULL")
-     * })
-     * @var Song|null
-     */
-    protected $song;
-
-    /**
-     * @ORM\Column(name="title", type="string", length=200, nullable=true)
-     *
-     * @OA\Property(example="Test Song")
-     *
-     * @var string|null The name of the media file's title.
-     */
-    protected $title;
-
-    /**
-     * @ORM\Column(name="artist", type="string", length=200, nullable=true)
-     *
-     * @OA\Property(example="Test Artist")
-     *
-     * @var string|null The name of the media file's artist.
-     */
-    protected $artist;
-
-    /**
      * @ORM\Column(name="album", type="string", length=200, nullable=true)
      *
      * @OA\Property(example="Test Album")
@@ -98,6 +64,15 @@ class StationMedia
      * @var string|null The name of the media file's album.
      */
     protected $album;
+
+    /**
+     * @ORM\Column(name="genre", type="string", length=30, nullable=true)
+     *
+     * @OA\Property(example="Rock")
+     *
+     * @var string|null The genre of the media file.
+     */
+    protected $genre;
 
     /**
      * @ORM\Column(name="lyrics", type="text", nullable=true)
@@ -118,13 +93,13 @@ class StationMedia
     protected $isrc;
 
     /**
-     * @ORM\Column(name="length", type="integer")
+     * @ORM\Column(name="length", type="decimal", precision=7, scale=2, nullable=true)
      *
-     * @OA\Property(example=240)
+     * @OA\Property(example=240.00)
      *
-     * @var int The song duration in seconds.
+     * @var float The song duration in seconds.
      */
-    protected $length = 0;
+    protected $length = 0.00;
 
     /**
      * @ORM\Column(name="length_text", type="string", length=10, nullable=true)
@@ -245,8 +220,8 @@ class StationMedia
     {
         $this->station = $station;
 
-        $this->playlists = new ArrayCollection;
-        $this->custom_fields = new ArrayCollection;
+        $this->playlists = new ArrayCollection();
+        $this->custom_fields = new ArrayCollection();
 
         $this->setPath($path);
         $this->generateUniqueId();
@@ -262,31 +237,6 @@ class StationMedia
         return $this->station;
     }
 
-    public function getSongId(): ?string
-    {
-        return $this->song_id;
-    }
-
-    public function getTitle(): ?string
-    {
-        return $this->title;
-    }
-
-    public function setTitle(?string $title = null): void
-    {
-        $this->title = $this->truncateString($title, 200);
-    }
-
-    public function getArtist(): ?string
-    {
-        return $this->artist;
-    }
-
-    public function setArtist(?string $artist = null): void
-    {
-        $this->artist = $this->truncateString($artist, 200);
-    }
-
     public function getAlbum(): ?string
     {
         return $this->album;
@@ -295,6 +245,16 @@ class StationMedia
     public function setAlbum(?string $album = null): void
     {
         $this->album = $this->truncateString($album, 200);
+    }
+
+    public function getGenre(): ?string
+    {
+        return $this->genre;
+    }
+
+    public function setGenre(?string $genre = null): void
+    {
+        $this->genre = $this->truncateString($genre, 30);
     }
 
     public function getLyrics(): ?string
@@ -309,8 +269,6 @@ class StationMedia
 
     /**
      * Get the Flysystem URI for album artwork for this item.
-     *
-     * @return string
      */
     public function getArtPath(): string
     {
@@ -320,6 +278,17 @@ class StationMedia
     public function getWaveformPath(): string
     {
         return Filesystem::PREFIX_WAVEFORMS . '://' . $this->unique_id . '.json';
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getRelatedFilePaths(): array
+    {
+        return [
+            $this->getArtPath(),
+            $this->getWaveformPath(),
+        ];
     }
 
     public function getIsrc(): ?string
@@ -332,7 +301,7 @@ class StationMedia
         $this->isrc = $isrc;
     }
 
-    public function getLength(): int
+    public function getLength(): float
     {
         return $this->length;
     }
@@ -345,8 +314,8 @@ class StationMedia
         $length_min = floor($length / 60);
         $length_sec = $length % 60;
 
-        $this->length = (int)round($length);
-        $this->length_text = $length_min . ':' . str_pad($length_sec, 2, '0', STR_PAD_LEFT);
+        $this->length = (float)$length;
+        $this->length_text = $length_min . ':' . str_pad((string)$length_sec, 2, '0', STR_PAD_LEFT);
     }
 
     public function getLengthText(): ?string
@@ -371,8 +340,6 @@ class StationMedia
 
     /**
      * Return the abstracted "full path" filesystem URI for this record.
-     *
-     * @return string
      */
     public function getPathUri(): string
     {
@@ -396,11 +363,7 @@ class StationMedia
 
     public function setAmplify(?float $amplify = null): void
     {
-        if ($amplify === '') {
-            $amplify = null;
-        }
-
-        $this->amplify = (null === $amplify) ? null : (float)$amplify;
+        $this->amplify = $amplify;
     }
 
     public function getFadeOverlap(): ?float
@@ -410,10 +373,6 @@ class StationMedia
 
     public function setFadeOverlap(?float $fade_overlap = null): void
     {
-        if ($fade_overlap === '') {
-            $fade_overlap = null;
-        }
-
         $this->fade_overlap = $fade_overlap;
     }
 
@@ -471,8 +430,6 @@ class StationMedia
 
     /**
      * @param string|float|null $seconds
-     *
-     * @return float|null
      */
     protected function parseSeconds($seconds = null): ?float
     {
@@ -494,8 +451,6 @@ class StationMedia
 
     /**
      * Get the length with cue-in and cue-out points included.
-     *
-     * @return int
      */
     public function getCalculatedLength(): int
     {
@@ -546,64 +501,13 @@ class StationMedia
         $this->custom_fields = $custom_fields;
     }
 
-    /**
-     * Indicate whether this media needs reprocessing given certain factors.
-     *
-     * @param int $current_mtime
-     *
-     * @return bool
-     */
     public function needsReprocessing($current_mtime = 0): bool
     {
-        if ($current_mtime > $this->mtime) {
-            return true;
-        }
-        if (!$this->songMatches()) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Check if the hash of the associated Song record matches the hash that would be
-     *   generated by this record's artist and title metadata. Used to determine if a
-     *   record should be reprocessed or not.
-     *
-     * @return bool
-     */
-    public function songMatches(): bool
-    {
-        return (null !== $this->song_id)
-            && ($this->song_id === $this->getExpectedSongHash());
-    }
-
-    /**
-     * Get the appropriate song hash for the title and artist specified here.
-     *
-     * @return string
-     */
-    protected function getExpectedSongHash(): string
-    {
-        return Song::getSongHash([
-            'artist' => $this->artist,
-            'title' => $this->title,
-        ]);
-    }
-
-    public function getSong(): ?Song
-    {
-        return $this->song;
-    }
-
-    public function setSong(?Song $song = null): void
-    {
-        $this->song = $song;
+        return $current_mtime > $this->mtime;
     }
 
     /**
      * Indicates whether this media is a part of any "requestable" playlists.
-     *
-     * @return bool
      */
     public function isRequestable(): bool
     {
@@ -619,43 +523,64 @@ class StationMedia
         return false;
     }
 
+    /**
+     * @return StationPlaylistMedia[]|Collection
+     */
     public function getPlaylists(): Collection
     {
         return $this->playlists;
     }
 
+    public function fromMetadata(Metadata $metadata): void
+    {
+        $this->setLength($metadata->getDuration());
+
+        $tags = $metadata->getTags();
+
+        if (isset($tags['title'])) {
+            $this->setTitle($tags['title']);
+        }
+        if (isset($tags['artist'])) {
+            $this->setArtist($tags['artist']);
+        }
+        if (isset($tags['album'])) {
+            $this->setAlbum($tags['album']);
+        }
+        if (isset($tags['genre'])) {
+            $this->setGenre($tags['genre']);
+        }
+        if (isset($tags['unsynchronised_lyric'])) {
+            $this->setLyrics($tags['unsynchronised_lyric']);
+        }
+        if (isset($tags['isrc'])) {
+            $this->setIsrc($tags['isrc']);
+        }
+    }
+
+    public function toMetadata(): Metadata
+    {
+        $metadata = new Metadata();
+        $metadata->setDuration($this->getLength());
+
+        $tagsToSet = array_filter([
+            'title' => $this->getTitle(),
+            'artist' => $this->getArtist(),
+            'album' => $this->getAlbum(),
+            'genre' => $this->getGenre(),
+            'unsynchronised_lyric' => $this->getLyrics(),
+            'isrc' => $this->getIsrc(),
+        ]);
+
+        $tags = $metadata->getTags();
+        foreach ($tagsToSet as $tagKey => $tagValue) {
+            $tags->set($tagKey, $tagValue);
+        }
+
+        return $metadata;
+    }
+
     public function __toString(): string
     {
         return 'StationMedia ' . $this->unique_id . ': ' . $this->artist . ' - ' . $this->title;
-    }
-
-    /**
-     * Retrieve the API version of the object/array.
-     *
-     * @param ApiUtilities $apiUtils
-     * @param UriInterface|null $baseUri
-     *
-     * @return Api\Song
-     */
-    public function api(ApiUtilities $apiUtils, UriInterface $baseUri = null): Api\Song
-    {
-        $response = new Api\Song;
-        $response->id = (string)$this->song_id;
-        $response->text = $this->artist . ' - ' . $this->title;
-        $response->artist = (string)$this->artist;
-        $response->title = (string)$this->title;
-
-        $response->album = (string)$this->album;
-        $response->lyrics = (string)$this->lyrics;
-
-        $response->art = $apiUtils->getAlbumArtUrl(
-            $this->station,
-            $this->unique_id,
-            $this->art_updated_at,
-            $baseUri
-        );
-        $response->custom_fields = $apiUtils->getCustomFields($this->id);
-
-        return $response;
     }
 }

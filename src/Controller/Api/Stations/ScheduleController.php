@@ -1,11 +1,11 @@
 <?php
+
 namespace App\Controller\Api\Stations;
 
 use App\Entity\Repository\StationScheduleRepository;
 use App\Http\Response;
 use App\Http\ServerRequest;
 use Carbon\CarbonImmutable;
-use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use OpenApi\Annotations as OA;
 use Psr\Http\Message\ResponseInterface;
@@ -46,8 +46,6 @@ class ScheduleController extends AbstractStationApiCrudController
      * @param EntityManagerInterface $em
      * @param CacheInterface $cache
      * @param StationScheduleRepository $scheduleRepo
-     *
-     * @return ResponseInterface
      */
     public function __invoke(
         ServerRequest $request,
@@ -57,7 +55,7 @@ class ScheduleController extends AbstractStationApiCrudController
         StationScheduleRepository $scheduleRepo
     ): ResponseInterface {
         $station = $request->getStation();
-        $tz = new DateTimeZone($station->getTimezone());
+        $tz = $station->getTimezoneObject();
 
         $now = $request->getQueryParam('now');
         if (!empty($now)) {

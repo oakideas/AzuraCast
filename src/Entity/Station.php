@@ -1,21 +1,19 @@
 <?php
+
 namespace App\Entity;
 
 use App\Annotations\AuditLog;
-use App\Customization;
 use App\File;
 use App\Radio\Adapters;
-use App\Radio\Frontend\AbstractFrontend;
 use App\Radio\Quota;
-use App\Radio\Remote\AdapterProxy;
 use App\Settings;
 use App\Validator\Constraints as AppAssert;
 use Brick\Math\BigInteger;
+use DateTimeZone;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use OpenApi\Annotations as OA;
-use Psr\Http\Message\UriInterface;
 use RuntimeException;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -33,12 +31,12 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 class Station
 {
+    use Traits\TruncateStrings;
+
     public const DEFAULT_REQUEST_DELAY = 5;
     public const DEFAULT_REQUEST_THRESHOLD = 15;
     public const DEFAULT_DISCONNECT_DEACTIVATE_STREAMER = 0;
     public const DEFAULT_API_HISTORY_ITEMS = 5;
-
-    use Traits\TruncateStrings;
 
     /**
      * @ORM\Column(name="id", type="integer")
@@ -89,7 +87,7 @@ class Station
     protected $frontend_type = Adapters::FRONTEND_ICECAST;
 
     /**
-     * @ORM\Column(name="frontend_config", type="json_array", nullable=true)
+     * @ORM\Column(name="frontend_config", type="json", nullable=true)
      *
      * @OA\Property(@OA\Items())
      * @var array|null An array containing station-specific frontend configuration
@@ -106,7 +104,7 @@ class Station
     protected $backend_type = Adapters::BACKEND_LIQUIDSOAP;
 
     /**
-     * @ORM\Column(name="backend_config", type="json_array", nullable=true)
+     * @ORM\Column(name="backend_config", type="json", nullable=true)
      *
      * @OA\Property(@OA\Items())
      * @var array|null An array containing station-specific backend configuration
@@ -118,7 +116,7 @@ class Station
      *
      * @AuditLog\AuditIgnore()
      *
-     * @var string|null An internal-use API key used for container-to-container communications from Liquidsoap to AzuraCast
+     * @var string|null An internal API key used for container-to-container communications from Liquidsoap to AzuraCast
      */
     protected $adapter_api_key;
 
@@ -181,7 +179,7 @@ class Station
     protected $nowplaying_timestamp;
 
     /**
-     * @ORM\Column(name="automation_settings", type="json_array", nullable=true)
+     * @ORM\Column(name="automation_settings", type="json", nullable=true)
      *
      * @OA\Property(@OA\Items())
      * @var array|null
@@ -285,7 +283,7 @@ class Station
      * @ORM\Column(name="api_history_items", type="smallint")
      *
      * @OA\Property(example=5)
-     * @var int|null The number of "last played" history items to show for a given station in the Now Playing API responses.
+     * @var int|null The number of "last played" history items to show for a station in the Now Playing API responses.
      */
     protected $api_history_items = self::DEFAULT_API_HISTORY_ITEMS;
 
@@ -408,14 +406,14 @@ class Station
 
     public function __construct()
     {
-        $this->history = new ArrayCollection;
-        $this->media = new ArrayCollection;
-        $this->playlists = new ArrayCollection;
-        $this->mounts = new ArrayCollection;
-        $this->remotes = new ArrayCollection;
-        $this->webhooks = new ArrayCollection;
-        $this->streamers = new ArrayCollection;
-        $this->sftp_users = new ArrayCollection;
+        $this->history = new ArrayCollection();
+        $this->media = new ArrayCollection();
+        $this->playlists = new ArrayCollection();
+        $this->mounts = new ArrayCollection();
+        $this->remotes = new ArrayCollection();
+        $this->webhooks = new ArrayCollection();
+        $this->streamers = new ArrayCollection();
+        $this->sftp_users = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -497,7 +495,7 @@ class Station
         }
 
         $config = $frontend_config->toArray();
-        
+
         if ($this->frontend_config != $config) {
             $this->setNeedsRestart(true);
         }
@@ -550,8 +548,6 @@ class Station
 
     /**
      * Whether the station uses AzuraCast to directly manage the AutoDJ or lets the backend handle it.
-     *
-     * @return bool
      */
     public function useManualAutoDJ(): bool
     {
@@ -608,8 +604,6 @@ class Station
      * Authenticate the supplied adapter API key.
      *
      * @param string $api_key
-     *
-     * @return bool
      */
     public function validateAdapterApiKey($api_key): bool
     {
@@ -687,8 +681,6 @@ class Station
      * Given an absolute path, return a path relative to this station's media directory.
      *
      * @param string $full_path
-     *
-     * @return string
      */
     public function getRelativeMediaPath($full_path): string
     {
@@ -725,6 +717,9 @@ class Station
         return $this->radio_base_dir . '/config';
     }
 
+    /**
+     * @return string[]|null[]
+     */
     public function getAllStationDirectories(): array
     {
         return [
@@ -766,6 +761,9 @@ class Station
         $this->nowplaying_timestamp = $nowplaying_timestamp;
     }
 
+    /**
+     * @return mixed[]|null
+     */
     public function getAutomationSettings(): ?array
     {
         return $this->automation_settings;
@@ -935,10 +933,7 @@ class Station
     public function getStorageUsed(): ?string
     {
         $raw_size = $this->getStorageUsedBytes();
-
-        return ($raw_size instanceof BigInteger)
-            ? Quota::getReadableSize($raw_size)
-            : '';
+        return Quota::getReadableSize($raw_size);
     }
 
     /**
@@ -1025,9 +1020,6 @@ class Station
         }
 
         $used = $this->getStorageUsedBytes();
-        if ($used === null) {
-            return false;
-        }
 
         return ($used->compareTo($available) !== -1);
     }
@@ -1043,7 +1035,12 @@ class Station
             return $this->timezone;
         }
 
-        return Customization::DEFAULT_TIMEZONE;
+        return 'UTC';
+    }
+
+    public function getTimezoneObject(): DateTimeZone
+    {
+        return new DateTimeZone($this->getTimezone());
     }
 
     public function setTimezone(?string $timezone): void
@@ -1051,9 +1048,6 @@ class Station
         $this->timezone = $timezone;
     }
 
-    /**
-     * @return string|null
-     */
     public function getDefaultAlbumArtUrl(): ?string
     {
         return $this->default_album_art_url;
@@ -1099,16 +1093,25 @@ class Station
         return $this->permissions;
     }
 
+    /**
+     * @return StationPlaylist[]|Collection
+     */
     public function getPlaylists(): Collection
     {
         return $this->playlists;
     }
 
+    /**
+     * @return StationMount[]|Collection
+     */
     public function getMounts(): Collection
     {
         return $this->mounts;
     }
 
+    /**
+     * @return StationRemote[]|Collection
+     */
     public function getRemotes(): Collection
     {
         return $this->remotes;
@@ -1124,52 +1127,9 @@ class Station
         return $this->sftp_users;
     }
 
-    /**
-     * Retrieve the API version of the object/array.
-     *
-     * @param AbstractFrontend $fa
-     * @param AdapterProxy[] $remoteAdapters
-     * @param UriInterface|null $baseUrl
-     * @param bool $showAllMounts
-     *
-     * @return Api\Station
-     */
-    public function api(
-        AbstractFrontend $fa,
-        array $remoteAdapters = [],
-        UriInterface $baseUrl = null,
-        bool $showAllMounts = false
-    ): Api\Station {
-        $response = new Api\Station;
-        $response->id = (int)$this->id;
-        $response->name = (string)$this->name;
-        $response->shortcode = (string)$this->getShortName();
-        $response->description = (string)$this->description;
-        $response->frontend = (string)$this->frontend_type;
-        $response->backend = (string)$this->backend_type;
-        $response->is_public = (bool)$this->enable_public_page;
-        $response->listen_url = $fa->getStreamUrl($this, $baseUrl);
-
-        $mounts = [];
-        if ($fa::supportsMounts() && $this->mounts->count() > 0) {
-            foreach ($this->mounts as $mount) {
-                /** @var StationMount $mount */
-                if ($showAllMounts || $mount->isVisibleOnPublicPages()) {
-                    $mounts[] = $mount->api($fa, $baseUrl);
-                }
-            }
-        }
-        $response->mounts = $mounts;
-
-        $remotes = [];
-        foreach ($remoteAdapters as $ra_proxy) {
-            $remote = $ra_proxy->getRemote();
-            if ($showAllMounts || $remote->isVisibleOnPublicPages()) {
-                $remotes[] = $remote->api($ra_proxy->getAdapter());
-            }
-        }
-        $response->remotes = $remotes;
-
-        return $response;
+    public function clearCache(): void
+    {
+        $this->nowplaying = null;
+        $this->nowplaying_timestamp = 0;
     }
 }

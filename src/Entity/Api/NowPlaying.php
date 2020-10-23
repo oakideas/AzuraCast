@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Entity\Api;
 
 use OpenApi\Annotations as OA;
@@ -45,9 +46,9 @@ class NowPlaying implements ResolvableUrlInterface
      * Next Playing Song
      *
      * @OA\Property
-     * @var SongHistory|null
+     * @var StationQueue|null
      */
-    public ?SongHistory $playing_next = null;
+    public ?StationQueue $playing_next = null;
 
     /**
      * @OA\Property
@@ -74,7 +75,7 @@ class NowPlaying implements ResolvableUrlInterface
     /**
      * Return an array representation of this object.
      *
-     * @return array
+     * @return mixed[]
      */
     public function toArray(): array
     {

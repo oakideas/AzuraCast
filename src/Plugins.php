@@ -1,7 +1,7 @@
 <?php
+
 namespace App;
 
-use Composer\Autoload\ClassLoader;
 use Doctrine\Inflector\Inflector;
 use Doctrine\Inflector\InflectorFactory;
 use Symfony\Component\Finder\Finder;
@@ -43,29 +43,11 @@ class Plugins
     }
 
     /**
-     * Add plugin namespace classes (and any Composer dependencies) to the global include list.
-     *
-     * @param ClassLoader $autoload
-     */
-    public function registerAutoloaders(ClassLoader $autoload): void
-    {
-        foreach ($this->plugins as $plugin) {
-            $plugin_path = $plugin['path'];
-
-            if (file_exists($plugin_path . '/vendor/autoload.php')) {
-                require($plugin_path . '/vendor/autoload.php');
-            }
-
-            $autoload->addPsr4($plugin['namespace'], $plugin_path . '/src');
-        }
-    }
-
-    /**
      * Register or override any services contained in the global Dependency Injection container.
      *
      * @param array $diDefinitions
      *
-     * @return array
+     * @return mixed[]
      */
     public function registerServices(array $diDefinitions = []): array
     {
@@ -95,5 +77,24 @@ class Plugins
                 call_user_func(include($plugin_path . '/events.php'), $dispatcher);
             }
         }
+    }
+
+    /**
+     * @param mixed[] $receivers
+     *
+     * @return mixed[]
+     */
+    public function registerMessageQueueReceivers(array $receivers): array
+    {
+        foreach ($this->plugins as $plugin) {
+            $pluginPath = $plugin['path'];
+
+            if (file_exists($pluginPath . '/messagequeue.php')) {
+                $pluginReceivers = include $pluginPath . '/messagequeue.php';
+                $receivers = array_merge($receivers, $pluginReceivers);
+            }
+        }
+
+        return $receivers;
     }
 }

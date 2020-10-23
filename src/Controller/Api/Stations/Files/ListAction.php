@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Api\Stations\Files;
 
 use App\Entity;
@@ -8,6 +9,7 @@ use App\Http\ServerRequest;
 use App\Utilities;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Http\Message\ResponseInterface;
+
 use const SORT_ASC;
 use const SORT_DESC;
 
@@ -37,8 +39,21 @@ class ListAction
 
         $search_phrase = trim($params['searchPhrase'] ?? '');
 
+        $pathLike = (empty($file)) ? '%' : $file . '/%';
+
         $media_query = $em->createQueryBuilder()
-            ->select('partial sm.{id, unique_id, art_updated_at, path, length, length_text, artist, title, album}')
+            ->select('partial sm.{
+                id,
+                unique_id,
+                art_updated_at,
+                path,
+                length,
+                length_text,
+                artist,
+                title,
+                album,
+                genre
+            }')
             ->addSelect('partial spm.{id}, partial sp.{id, name}')
             ->addSelect('partial smcf.{id, field_id, value}')
             ->from(Entity\StationMedia::class, 'sm')
@@ -48,7 +63,7 @@ class ListAction
             ->where('sm.station_id = :station_id')
             ->andWhere('sm.path LIKE :path')
             ->setParameter('station_id', $station->getId())
-            ->setParameter('path', $file . '%');
+            ->setParameter('path', $pathLike);
 
         // Apply searching
         if (!empty($search_phrase)) {
@@ -63,7 +78,11 @@ class ListAction
 
             $folders_in_dir_raw = [];
         } else {
-            $folders_in_dir_raw = $em->createQuery(/** @lang DQL */ 'SELECT 
+            // Avoid loading subfolder media.
+            $media_query->andWhere('sm.path NOT LIKE :pathWithSubfolders')
+                ->setParameter('pathWithSubfolders', $pathLike . '/%');
+
+            $folders_in_dir_raw = $em->createQuery(/** @lang DQL */ 'SELECT
                 spf, partial sp.{id, name}
                 FROM App\Entity\StationPlaylistFolder spf
                 JOIN spf.playlist sp
@@ -92,11 +111,14 @@ class ListAction
 
             $artImgSrc = (0 === $media_row['art_updated_at'])
                 ? (string)$stationRepo->getDefaultAlbumArtUrl($station)
-                : (string)$router->named('api:stations:media:art',
+                : (string)$router->named(
+                    'api:stations:media:art',
                     [
                         'station_id' => $station->getId(),
                         'media_id' => $media_row['unique_id'] . '-' . $media_row['art_updated_at'],
-                    ]);
+                    ]
+                )
+            ;
 
             $media_in_dir[$media_row['path']] = [
                     'is_playable' => ($media_row['length'] !== 0),
@@ -105,6 +127,7 @@ class ListAction
                     'artist' => $media_row['artist'],
                     'title' => $media_row['title'],
                     'album' => $media_row['album'],
+                    'genre' => $media_row['genre'],
                     'name' => $media_row['artist'] . ' - ' . $media_row['title'],
                     'art' => $artImgSrc,
                     'art_url' => (string)$router->named(
@@ -124,9 +147,9 @@ class ListAction
                         ['station_id' => $station->getId(), 'id' => $media_row['id']]
                     ),
                     'play_url' => (string)$router->named(
-                        'api:stations:files:download',
-                        ['station_id' => $station->getId()],
-                        ['file' => $media_row['path']],
+                        'api:stations:file:download',
+                        ['station_id' => $station->getId(), 'id' => $media_row['id']],
+                        [],
                         true
                     ),
                     'playlists' => $playlists,
@@ -186,8 +209,11 @@ class ListAction
                 'text' => $shortname,
                 'is_dir' => ('dir' === $meta['type']),
                 'can_rename' => true,
-                'rename_url' => (string)$router->named('api:stations:files:rename', ['station_id' => $station->getId()],
-                    ['file' => $short]),
+                'rename_url' => (string)$router->named(
+                    'api:stations:files:rename',
+                    ['station_id' => $station->getId()],
+                    ['file' => $short]
+                ),
             ];
 
             foreach ($media as $media_key => $media_val) {

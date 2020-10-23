@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Middleware;
 
 use App\Assets;
@@ -35,8 +36,6 @@ class EnforceSecurity implements MiddlewareInterface
     /**
      * @param ServerRequestInterface $request
      * @param RequestHandlerInterface $handler
-     *
-     * @return ResponseInterface
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -49,7 +48,7 @@ class EnforceSecurity implements MiddlewareInterface
 
         if ('https' === $request->getUri()->getScheme()) {
             // Enforce secure cookies.
-            ini_set('session.cookie_secure', 1);
+            ini_set('session.cookie_secure', '1');
 
             $csp[] = 'upgrade-insecure-requests';
 

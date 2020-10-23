@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Radio;
 
 use App\Entity\Station;
@@ -54,18 +55,22 @@ class Configuration
 
         if (!$station->isEnabled()) {
             @unlink($supervisor_config_path);
-            $this->_reloadSupervisorForStation($station, false);
+            $this->reloadSupervisorForStation($station, false);
             return;
         }
 
         // Ensure port configuration exists
         $this->assignRadioPorts($station, false);
 
+        // Clear station caches and generate API adapter key if none exists.
         if ($regen_auth_key || empty($station->getAdapterApiKey())) {
             $station->generateAdapterApiKey();
-            $this->em->persist($station);
-            $this->em->flush();
         }
+
+        $station->clearCache();
+
+        $this->em->persist($station);
+        $this->em->flush();
 
         $frontend = $this->adapters->getFrontendAdapter($station);
         $backend = $this->adapters->getBackendAdapter($station);
@@ -73,7 +78,7 @@ class Configuration
         // If no processes need to be managed, remove any existing config.
         if (!$frontend->hasCommand($station) && !$backend->hasCommand($station)) {
             @unlink($supervisor_config_path);
-            $this->_reloadSupervisorForStation($station, false);
+            $this->reloadSupervisorForStation($station, false);
             return;
         }
 
@@ -111,25 +116,23 @@ class Configuration
 
         // Write frontend
         if ($frontend->hasCommand($station)) {
-            $supervisor_config[] = $this->_writeConfigurationSection($station, $frontend, 90);
+            $supervisor_config[] = $this->writeConfigurationSection($station, $frontend, 90);
         }
 
         // Write backend
         if ($backend->hasCommand($station)) {
-            $supervisor_config[] = $this->_writeConfigurationSection($station, $backend, 100);
+            $supervisor_config[] = $this->writeConfigurationSection($station, $backend, 100);
         }
 
         // Write config contents
         $supervisor_config_data = implode("\n", $supervisor_config);
         file_put_contents($supervisor_config_path, $supervisor_config_data);
 
-        $this->_reloadSupervisorForStation($station, $force_restart);
+        $this->reloadSupervisorForStation($station, $force_restart);
     }
 
     /**
      * @param Station $station
-     *
-     * @return string
      */
     protected function getSupervisorConfigFile(Station $station): string
     {
@@ -144,10 +147,10 @@ class Configuration
      * @param Station $station
      * @param bool $force_restart
      */
-    protected function _reloadSupervisorForStation(Station $station, $force_restart = false): void
+    protected function reloadSupervisorForStation(Station $station, $force_restart = false): void
     {
         $station_group = 'station_' . $station->getId();
-        $affected_groups = $this->_reloadSupervisor();
+        $affected_groups = $this->reloadSupervisor();
 
         $was_restarted = in_array($station_group, $affected_groups, true);
 
@@ -169,9 +172,9 @@ class Configuration
     /**
      * Trigger a supervisord reload and restart all relevant services.
      *
-     * @return array A list of affected service groups (either stopped, removed or
+     * @return mixed[] A list of affected service groups (either stopped, removed or
      */
-    protected function _reloadSupervisor(): array
+    protected function reloadSupervisor(): array
     {
         $reload_result = $this->supervisor->reloadConfig();
 
@@ -220,7 +223,10 @@ class Configuration
      */
     public function assignRadioPorts(Station $station, $force = false): void
     {
-        if ($station->getFrontendType() !== Adapters::FRONTEND_REMOTE || $station->getBackendType() !== Adapters::BACKEND_NONE) {
+        if (
+            $station->getFrontendType() !== Adapters::FRONTEND_REMOTE
+            || $station->getBackendType() !== Adapters::BACKEND_NONE
+        ) {
             $frontend_config = $station->getFrontendConfig();
             $backend_config = $station->getBackendConfig();
 
@@ -299,7 +305,7 @@ class Configuration
      *
      * @param Station|null $except_station
      *
-     * @return array
+     * @return mixed[]
      */
     public function getUsedPorts(Station $except_station = null): array
     {
@@ -309,8 +315,8 @@ class Configuration
             $used_ports = [];
 
             // Get all station used ports.
-            $station_configs = $this->em->createQuery(/** @lang DQL */ 'SELECT 
-                s.id, s.name, s.frontend_type, s.frontend_config, s.backend_type, s.backend_config 
+            $station_configs = $this->em->createQuery(/** @lang DQL */ 'SELECT
+                s.id, s.name, s.frontend_type, s.frontend_config, s.backend_type, s.backend_config
                 FROM App\Entity\Station s')
                 ->getArrayResult();
 
@@ -352,7 +358,7 @@ class Configuration
         return $used_ports;
     }
 
-    protected function _writeConfigurationSection(
+    protected function writeConfigurationSection(
         Station $station,
         AbstractAdapter $adapter,
         $priority
@@ -410,6 +416,6 @@ class Configuration
         $supervisor_config_path = $this->getSupervisorConfigFile($station);
         @unlink($supervisor_config_path);
 
-        $this->_reloadSupervisor();
+        $this->reloadSupervisor();
     }
 }

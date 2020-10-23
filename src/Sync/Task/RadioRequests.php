@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Sync\Task;
 
 use App\Entity;
@@ -39,11 +40,10 @@ class RadioRequests extends AbstractTask
      */
     public function run(bool $force = false): void
     {
-        /** @var Entity\Repository\StationRepository $stations */
+        /** @var Entity\Station[] $stations */
         $stations = $this->em->getRepository(Entity\Station::class)->findAll();
 
         foreach ($stations as $station) {
-            /** @var Entity\Station $station */
             if (!$station->useManualAutoDJ()) {
                 continue;
             }
@@ -67,27 +67,27 @@ class RadioRequests extends AbstractTask
         }
 
         // Check for an existing SongHistory record and skip if one exists.
-        $sh = $this->em->getRepository(Entity\SongHistory::class)->findOneBy([
+        $sq = $this->em->getRepository(Entity\StationQueue::class)->findOneBy([
             'station' => $station,
             'request' => $request,
         ]);
 
-        if (!$sh instanceof Entity\SongHistory) {
+        if (!$sq instanceof Entity\StationQueue) {
             // Log the item in SongHistory.
             $media = $request->getTrack();
 
-            $sh = new Entity\SongHistory($media->getSong(), $station);
-            $sh->setTimestampCued(time());
-            $sh->setMedia($media);
-            $sh->setRequest($request);
-            $sh->sentToAutodj();
+            $sq = new Entity\StationQueue($station, $media);
+            $sq->setTimestampCued(time());
+            $sq->setMedia($media);
+            $sq->setRequest($request);
+            $sq->sentToAutodj();
 
-            $this->em->persist($sh);
+            $this->em->persist($sq);
             $this->em->flush();
         }
 
         // Generate full Liquidsoap annotations
-        $event = new AnnotateNextSong($station, $sh);
+        $event = new AnnotateNextSong($sq, true);
         $this->dispatcher->dispatch($event);
 
         $track = $event->buildAnnotations();

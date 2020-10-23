@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Console\Command\Internal;
 
 use App\Console\Command\CommandAbstract;
@@ -24,8 +25,8 @@ class SftpUploadCommand extends CommandAbstract
         string $path = null,
         string $targetPath = null,
         string $sshCmd = null
-    ) {
-        $logger->info('SFTP file uploaded', ['path' => $path]);
+    ): int {
+        $logger->notice('SFTP file uploaded', ['path' => $path]);
 
         // Determine which station the username belongs to.
         $userRepo = $em->getRepository(Entity\SftpUser::class);
@@ -36,7 +37,7 @@ class SftpUploadCommand extends CommandAbstract
 
         if (!$sftpUser instanceof Entity\SftpUser) {
             $logger->error('SFTP Username not found.', ['username' => $username]);
-            return;
+            return 1;
         }
 
         $station = $sftpUser->getStation();
@@ -46,10 +47,12 @@ class SftpUploadCommand extends CommandAbstract
 
         $relative_path = str_replace($station->getRadioMediaDir() . '/', '', $path);
 
-        $message = new Message\AddNewMediaMessage;
+        $message = new Message\AddNewMediaMessage();
         $message->station_id = $station->getId();
         $message->path = $relative_path;
 
         $messageBus->dispatch($message);
+
+        return 0;
     }
 }

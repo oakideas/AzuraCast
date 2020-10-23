@@ -1,20 +1,38 @@
 <?php
+
 namespace App\Entity\Repository;
 
 use App\Doctrine\Repository;
 use App\Entity;
 use App\Radio\Adapters;
+use App\Radio\AutoDJ\Scheduler;
+use App\Settings;
+use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Serializer\Serializer;
 
 class StationStreamerRepository extends Repository
 {
+    protected Scheduler $scheduler;
+
+    public function __construct(
+        EntityManagerInterface $em,
+        Serializer $serializer,
+        Settings $settings,
+        LoggerInterface $logger,
+        Scheduler $scheduler
+    ) {
+        parent::__construct($em, $serializer, $settings, $logger);
+
+        $this->scheduler = $scheduler;
+    }
+
     /**
      * Attempt to authenticate a streamer.
      *
      * @param Entity\Station $station
      * @param string $username
      * @param string $password
-     *
-     * @return bool
      */
     public function authenticate(
         Entity\Station $station,
@@ -31,7 +49,7 @@ class StationStreamerRepository extends Repository
             return false;
         }
 
-        return $streamer->authenticate($password) && $streamer->canStreamNow();
+        return $streamer->authenticate($password) && $this->scheduler->canStreamerStreamNow($streamer);
     }
 
     /**
@@ -113,7 +131,7 @@ class StationStreamerRepository extends Repository
     /**
      * Fetch all streamers who are deactivated and have a reactivate at timestamp set
      *
-     * @param int $reactivate_at
+     * @param int|null $reactivate_at
      *
      * @return Entity\StationStreamer[]
      */
@@ -121,7 +139,9 @@ class StationStreamerRepository extends Repository
     {
         $reactivate_at = $reactivate_at ?? time();
 
-        return $this->repository->createQueryBuilder('s')
+        return $this->em->createQueryBuilder()
+            ->select('s')
+            ->from($this->entityClass, 's')
             ->where('s.is_active = 0')
             ->andWhere('s.reactivate_at <= :reactivate_at')
             ->setParameter('reactivate_at', $reactivate_at)

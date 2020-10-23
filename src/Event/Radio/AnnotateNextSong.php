@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Event\Radio;
 
 use App\Entity;
@@ -11,31 +12,47 @@ use Symfony\Contracts\EventDispatcher\Event;
  */
 class AnnotateNextSong extends Event
 {
-    /** @var null|Entity\SongHistory The next song, if it's already calculated. */
-    protected ?Entity\SongHistory $nextSong;
+    protected Entity\StationQueue $queue;
+
+    protected ?string $songPath;
+
+    /** @var bool Whether the request is going to the AutoDJ or being used for testing. */
+    protected bool $asAutoDj = false;
 
     /** @var array Custom annotations that should be sent along with the AutoDJ response. */
     protected array $annotations = [];
 
-    /** @var string The path of the song to annotate. */
-    protected string $songPath;
+    public function __construct(
+        Entity\StationQueue $queue,
+        bool $asAutoDj = false
+    ) {
+        $this->queue = $queue;
+        $this->asAutoDj = $asAutoDj;
+    }
 
-    protected Entity\Station $station;
-
-    public function __construct(Entity\Station $station, ?Entity\SongHistory $next_song = null)
+    public function getQueue(): ?Entity\StationQueue
     {
-        $this->station = $station;
-        $this->nextSong = $next_song;
+        return $this->queue;
     }
 
     public function getStation(): Entity\Station
     {
-        return $this->station;
+        return $this->queue->getStation();
     }
 
-    public function getNextSong(): ?Entity\SongHistory
+    public function getMedia(): ?Entity\StationMedia
     {
-        return $this->nextSong;
+        return $this->queue->getMedia();
+    }
+
+    public function getPlaylist(): ?Entity\StationPlaylist
+    {
+        return $this->queue->getPlaylist();
+    }
+
+    public function getRequest(): ?Entity\StationRequest
+    {
+        return $this->queue->getRequest();
     }
 
     public function setAnnotations(array $annotations): void
@@ -53,10 +70,13 @@ class AnnotateNextSong extends Event
         $this->songPath = $songPath;
     }
 
+    public function isAsAutoDj(): bool
+    {
+        return $this->asAutoDj;
+    }
+
     /**
      * Compile the resulting annotations into one string for Liquidsoap to consume.
-     *
-     * @return string
      */
     public function buildAnnotations(): string
     {

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Api\Stations\Files;
 
 use App\Entity;
@@ -26,7 +27,8 @@ class BatchAction
         MessageBus $messageBus
     ): ResponseInterface {
         $station = $request->getStation();
-        $fs = $filesystem->getForStation($station);
+
+        $fs = $filesystem->getForStation($station, false);
 
         // Convert from pipe-separated files parameter into actual paths.
         $files_raw = $request->getParam('files');
@@ -64,29 +66,20 @@ class BatchAction
                         $media = $mediaRepo->findByPath($file['path'], $station);
 
                         if ($media instanceof Entity\StationMedia) {
-                            $media_playlists = $playlistMediaRepo->clearPlaylistsFromMedia($media);
+                            $mediaPlaylists = $mediaRepo->remove($media);
 
-                            foreach ($media_playlists as $playlist_id => $playlist) {
+                            foreach ($mediaPlaylists as $playlist_id => $playlist) {
                                 if (!isset($affected_playlists[$playlist_id])) {
                                     $affected_playlists[$playlist_id] = $playlist;
                                 }
                             }
-
-                            $em->remove($media);
-                            $em->flush();
                         }
                     } catch (Exception $e) {
                         $errors[] = $file . ': ' . $e->getMessage();
-
-                        if (!$em->isOpen()) {
-                            break 2;
-                        }
                     }
 
                     $files_affected++;
                 }
-
-                $em->flush();
 
                 // Delete all selected files.
                 foreach ($files as $file) {
@@ -110,7 +103,7 @@ class BatchAction
                 if ($backend instanceof Liquidsoap) {
                     foreach ($affected_playlists as $playlist_id => $playlist_row) {
                         // Instruct the message queue to start a new "write playlist to file" task.
-                        $message = new WritePlaylistFileMessage;
+                        $message = new WritePlaylistFileMessage();
                         $message->playlist_id = $playlist_id;
 
                         $messageBus->dispatch($message);
@@ -179,10 +172,6 @@ class BatchAction
                         }
                     } catch (Exception $e) {
                         $errors[] = $file . ': ' . $e->getMessage();
-
-                        if (!$em->isOpen()) {
-                            break 2;
-                        }
                     }
 
                     $files_affected++;
@@ -197,10 +186,6 @@ class BatchAction
                         $playlistFolderRepo->setPlaylistsForFolder($station, $playlists, $dir['path']);
                     } catch (Exception $e) {
                         $errors[] = $dir['path'] . ': ' . $e->getMessage();
-
-                        if (!$em->isOpen()) {
-                            break 2;
-                        }
                     }
                 }
 
@@ -212,7 +197,7 @@ class BatchAction
                 if ($backend instanceof Liquidsoap) {
                     foreach ($affected_playlists as $playlist_id => $playlist_row) {
                         // Instruct the message queue to start a new "write playlist to file" task.
-                        $message = new WritePlaylistFileMessage;
+                        $message = new WritePlaylistFileMessage();
                         $message->playlist_id = $playlist_id;
 
                         $messageBus->dispatch($message);
@@ -247,8 +232,11 @@ class BatchAction
                         $media->setPath($newPath);
 
                         if (!$fs->rename($old_full_path, $media->getPath())) {
-                            throw new \App\Exception(__('Could not move "%s" to "%s"', $old_full_path,
-                                $media->getPath()));
+                            throw new \App\Exception(__(
+                                'Could not move "%s" to "%s"',
+                                $old_full_path,
+                                $media->getPath()
+                            ));
                         }
 
                         $em->persist($media);
@@ -257,10 +245,6 @@ class BatchAction
                     }
                 } catch (Exception $e) {
                     $errors[] = $e->getMessage();
-
-                    if (!$em->isOpen()) {
-                        break;
-                    }
                 }
 
                 $em->flush();
@@ -280,10 +264,6 @@ class BatchAction
                         $files_affected++;
                     } catch (Exception $e) {
                         $errors[] = $e->getMessage();
-
-                        if (!$em->isOpen()) {
-                            break 2;
-                        }
                     }
                 }
                 break;
@@ -307,6 +287,9 @@ class BatchAction
         ]);
     }
 
+    /**
+     * @return mixed[]
+     */
     protected function getMusicFiles(StationFilesystem $fs, array $files): array
     {
         $musicFiles = [];
@@ -315,10 +298,12 @@ class BatchAction
             $pathMeta = $fs->getMetadata($path);
 
             if ('file' === $pathMeta['type']) {
+                $pathMeta['basename'] = basename($pathMeta['path']);
                 $musicFiles[] = $pathMeta;
             } else {
                 foreach ($fs->listContents($path, true) as $file) {
                     if ('file' === $file['type']) {
+                        $file['basename'] = basename($file['path']);
                         $musicFiles[] = $file;
                     }
                 }
@@ -328,6 +313,9 @@ class BatchAction
         return $musicFiles;
     }
 
+    /**
+     * @return mixed[]
+     */
     protected function getDirectories(StationFilesystem $fs, array $files): array
     {
         $directories = [];

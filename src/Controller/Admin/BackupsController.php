@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Admin;
 
 use App\Config;
@@ -46,7 +47,7 @@ class BackupsController extends AbstractLogViewerController
     public function __invoke(ServerRequest $request, Response $response): ResponseInterface
     {
         return $request->getView()->renderToResponse($response, 'admin/backups/index', [
-            'backups' => $this->backupFs->listContents('', false),
+            'backups' => array_reverse($this->backupFs->listContents('', false)),
             'is_enabled' => (bool)$this->settingsRepo->getSetting(Settings::BACKUP_ENABLED, false),
             'last_run' => $this->settingsRepo->getSetting(Settings::BACKUP_LAST_RUN, 0),
             'last_result' => $this->settingsRepo->getSetting(Settings::BACKUP_LAST_RESULT, 0),

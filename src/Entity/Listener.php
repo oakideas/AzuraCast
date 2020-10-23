@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -80,7 +81,7 @@ class Listener
         $this->timestamp_start = time();
         $this->timestamp_end = 0;
 
-        $this->listener_uid = $client->uid;
+        $this->listener_uid = (int)$client->uid;
         $this->listener_user_agent = $this->truncateString($client->userAgent) ?? '';
         $this->listener_ip = $client->ip;
         $this->listener_hash = self::calculateListenerHash($client);
@@ -146,7 +147,7 @@ class Listener
      *
      * @param array $clients
      *
-     * @return array
+     * @return mixed[]
      */
     public static function filterClients(array $clients): array
     {
@@ -192,8 +193,6 @@ class Listener
 
     /**
      * @param array|Client $client
-     *
-     * @return string
      */
     public static function calculateListenerHash($client): string
     {

@@ -1,9 +1,11 @@
 <?php
+
 namespace App\Console\Command;
 
 use App\Entity;
 use App\Service\AzuraCastCentral;
 use App\Settings;
+use Doctrine\ORM\EntityManagerInterface;
 use Psr\Container\ContainerInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
@@ -20,7 +22,7 @@ class SetupCommand extends CommandAbstract
         AzuraCastCentral $acCentral,
         bool $update = false,
         bool $loadFixtures = false
-    ) {
+    ): int {
         $io->title(__('AzuraCast Setup'));
         $io->writeln(__('Welcome to AzuraCast. Please wait while some key dependencies of AzuraCast are set up...'));
 
@@ -28,8 +30,6 @@ class SetupCommand extends CommandAbstract
             __('Environment: %s', ucfirst($settings[Settings::APP_ENV])),
             __('Installation Method: %s', $settings->isDocker() ? 'Docker' : 'Ansible'),
         ]);
-
-        $this->runCommand($output, 'azuracast:internal:uptime-wait');
 
         if ($update) {
             $io->note(__('Running in update mode.'));
@@ -41,13 +41,14 @@ class SetupCommand extends CommandAbstract
             }
         }
 
-        $io->section(__('Setting Up InfluxDB'));
-
-        $this->runCommand($output, 'azuracast:setup:influx');
+        /** @var EntityManagerInterface $em */
+        $em = $di->get(EntityManagerInterface::class);
+        $conn = $em->getConnection();
 
         $io->newLine();
         $io->section(__('Running Database Migrations'));
 
+        $conn->ping();
         $this->runCommand($output, 'migrations:migrate', [
             '--allow-no-migration' => true,
         ]);
@@ -55,6 +56,7 @@ class SetupCommand extends CommandAbstract
         $io->newLine();
         $io->section(__('Generating Database Proxy Classes'));
 
+        $conn->ping();
         $this->runCommand($output, 'orm:generate-proxies');
 
         if ($loadFixtures || (!$settings->isProduction() && !$update)) {
@@ -69,11 +71,15 @@ class SetupCommand extends CommandAbstract
 
         $this->runCommand($output, 'cache:clear');
 
+        $this->runCommand($output, 'queue:clear');
+
         $settingsRepo->deleteSetting(Entity\Settings::NOWPLAYING);
         $stationRepo->clearNowPlaying();
 
         $io->newLine();
         $io->section(__('Refreshing All Stations'));
+
+        $conn->ping();
         $this->runCommand($output, 'azuracast:radio:restart');
 
         // Clear settings that should be reset upon update.

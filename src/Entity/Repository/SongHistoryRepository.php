@@ -1,13 +1,14 @@
 <?php
+
 namespace App\Entity\Repository;
 
-use App\ApiUtilities;
 use App\Doctrine\Repository;
 use App\Entity;
 use App\Settings;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\QueryBuilder;
-use Psr\Http\Message\UriInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Serializer\Serializer;
 
@@ -15,76 +16,120 @@ class SongHistoryRepository extends Repository
 {
     protected ListenerRepository $listenerRepository;
 
+    protected StationQueueRepository $stationQueueRepository;
+
     public function __construct(
         EntityManagerInterface $em,
         Serializer $serializer,
         Settings $settings,
         LoggerInterface $logger,
-        ListenerRepository $listenerRepository
+        ListenerRepository $listenerRepository,
+        StationQueueRepository $stationQueueRepository
     ) {
         $this->listenerRepository = $listenerRepository;
+        $this->stationQueueRepository = $stationQueueRepository;
 
         parent::__construct($em, $serializer, $settings, $logger);
     }
 
     /**
      * @param Entity\Station $station
-     * @param ApiUtilities $apiUtils
-     * @param UriInterface|null $baseUrl
      *
-     * @return Entity\Api\SongHistory[]
+     * @return Entity\SongHistory[]
      */
-    public function getHistoryApi(
-        Entity\Station $station,
-        ApiUtilities $apiUtils,
-        UriInterface $baseUrl = null
-    ): array {
-        $num_entries = $station->getApiHistoryItems();
-
-        if ($num_entries === 0) {
+    public function getVisibleHistory(Entity\Station $station): array
+    {
+        $numEntries = $station->getApiHistoryItems();
+        if (0 === $numEntries) {
             return [];
         }
 
-        $history = $this->em->createQuery(/** @lang DQL */ 'SELECT sh, s 
-            FROM App\Entity\SongHistory sh 
-            JOIN sh.song s 
-            LEFT JOIN sh.media sm  
-            WHERE sh.station_id = :station_id 
+        $recordsRaw = $this->em->createQuery(/** @lang DQL */ 'SELECT sh
+            FROM App\Entity\SongHistory sh
+            LEFT JOIN sh.media sm
+            WHERE sh.station_id = :station_id
             AND sh.timestamp_end != 0
             ORDER BY sh.id DESC')
             ->setParameter('station_id', $station->getId())
-            ->setMaxResults($num_entries)
+            ->setMaxResults($numEntries)
             ->execute();
 
-        $return = [];
-        foreach ($history as $sh) {
-            /** @var Entity\SongHistory $sh */
-            if ($sh->showInApis()) {
-                $return[] = $sh->api(new Entity\Api\SongHistory, $apiUtils, $baseUrl);
+        $records = [];
+        foreach ($recordsRaw as $row) {
+            /** @var Entity\SongHistory $row */
+            if ($row->showInApis()) {
+                $records[] = $row;
             }
         }
-
-        return $return;
+        return $records;
     }
 
-    public function getNextSongApi(
+    /**
+     * @return mixed[]
+     */
+    public function getRecentlyPlayed(
         Entity\Station $station,
-        ApiUtilities $apiUtils,
-        UriInterface $baseUrl = null
-    ): ?Entity\Api\SongHistory {
-        $queue = $this->getUpcomingQueue($station);
+        CarbonInterface $now,
+        int $rows
+    ): array {
+        $recentlyPlayed = $this->em->createQuery(/** @lang DQL */ 'SELECT sq
+            FROM App\Entity\StationQueue sq
+            WHERE sq.station = :station
+            ORDER BY sq.timestamp_cued DESC')
+            ->setParameter('station', $station)
+            ->setMaxResults($rows)
+            ->getArrayResult();
 
-        foreach ($queue as $sh) {
-            if ($sh->showInApis()) {
-                return $sh->api(new Entity\Api\SongHistory, $apiUtils, $baseUrl);
-            }
-        }
+        $recentHistory = $this->em->createQuery(/** @lang DQL */ 'SELECT sh
+            FROM App\Entity\SongHistory sh
+            WHERE sh.station = :station
+            AND (sh.timestamp_start != 0 AND sh.timestamp_start IS NOT NULL)
+            AND sh.timestamp_start >= :threshold
+            ORDER BY sh.timestamp_start DESC')
+            ->setParameter('station', $station)
+            ->setParameter('threshold', $now->subDay()->getTimestamp())
+            ->setMaxResults($rows)
+            ->getArrayResult();
 
-        return null;
+        $recentlyPlayed = array_merge($recentlyPlayed, $recentHistory);
+        return array_slice($recentlyPlayed, 0, $rows);
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getRecentlyPlayedByTimeRange(
+        Entity\Station $station,
+        CarbonInterface $now,
+        int $minutes
+    ): array {
+        $timeRangeInSeconds = $minutes * 60;
+        $threshold = $now->getTimestamp() - $timeRangeInSeconds;
+
+        $recentlyPlayed = $this->em->createQuery(/** @lang DQL */ 'SELECT sq
+            FROM App\Entity\StationQueue sq
+            WHERE sq.station = :station
+            AND sq.timestamp_cued >= :threshold
+            ORDER BY sq.timestamp_cued DESC')
+            ->setParameter('station', $station)
+            ->setParameter('threshold', $threshold)
+            ->getArrayResult();
+
+        $recentHistory = $this->em->createQuery(/** @lang DQL */ 'SELECT sh
+            FROM App\Entity\SongHistory sh
+            WHERE sh.station = :station
+            AND (sh.timestamp_start != 0 AND sh.timestamp_start IS NOT NULL)
+            AND sh.timestamp_start >= :threshold
+            ORDER BY sh.timestamp_start DESC')
+            ->setParameter('station', $station)
+            ->setParameter('threshold', $threshold)
+            ->getArrayResult();
+
+        return array_merge($recentlyPlayed, $recentHistory);
     }
 
     public function register(
-        Entity\Song $song,
+        Entity\SongInterface $song,
         Entity\Station $station,
         Entity\Api\NowPlaying $np
     ): Entity\SongHistory {
@@ -94,7 +139,7 @@ class SongHistoryRepository extends Repository
         $listeners = (int)$np->listeners->current;
 
         if ($last_sh instanceof Entity\SongHistory) {
-            if ($last_sh->getSong() === $song) {
+            if ($last_sh->getSongId() === $song->getSongId()) {
                 // Updating the existing SongHistory item with a new data point.
                 $last_sh->addDeltaPoint($listeners);
 
@@ -135,19 +180,27 @@ class SongHistoryRepository extends Repository
             $last_sh->setDeltaNegative($delta_negative);
             $last_sh->setDeltaTotal($delta_total);
 
-            $last_sh->setUniqueListeners($this->listenerRepository->getUniqueListeners($station,
-                $last_sh->getTimestampStart(),
-                time()));
+            $last_sh->setUniqueListeners(
+                $this->listenerRepository->getUniqueListeners(
+                    $station,
+                    $last_sh->getTimestampStart(),
+                    time()
+                )
+            );
 
             $this->em->persist($last_sh);
         }
 
         // Look for an already cued but unplayed song.
-        $sh = $this->getUpcomingFromSong($station, $song);
+        $sq = $this->stationQueueRepository->getUpcomingFromSong($station, $song);
 
-        // Processing a new SongHistory item.
-        if (!($sh instanceof Entity\SongHistory)) {
-            $sh = new Entity\SongHistory($song, $station);
+        if ($sq instanceof Entity\StationQueue) {
+            $sh = Entity\SongHistory::fromQueue($sq);
+
+            $this->em->remove($sq);
+        } else {
+            // Processing a new SongHistory item.
+            $sh = new Entity\SongHistory($station, $song);
 
             $currentStreamer = $station->getCurrentStreamer();
             if ($currentStreamer instanceof Entity\StationStreamer) {
@@ -167,7 +220,7 @@ class SongHistoryRepository extends Repository
 
     public function getCurrent(Entity\Station $station): ?Entity\SongHistory
     {
-        return $this->em->createQuery(/** @lang DQL */ 'SELECT sh 
+        return $this->em->createQuery(/** @lang DQL */ 'SELECT sh
             FROM App\Entity\SongHistory sh
             WHERE sh.station = :station
             AND sh.timestamp_start != 0
@@ -180,48 +233,52 @@ class SongHistoryRepository extends Repository
 
     /**
      * @param Entity\Station $station
+     * @param int|DateTimeInterface $start
+     * @param int|DateTimeInterface $end
      *
-     * @return Entity\SongHistory[]
+     * @return mixed[] [int $minimumListeners, int $maximumListeners, float $averageListeners]
      */
-    public function getUpcomingQueue(Entity\Station $station): array
+    public function getStatsByTimeRange(Entity\Station $station, $start, $end): array
     {
-        return $this->getUpcomingBaseQuery($station)
-            ->andWhere('sh.sent_to_autodj = 0')
-            ->getQuery()
-            ->execute();
-    }
+        if ($start instanceof DateTimeInterface) {
+            $start = $start->getTimestamp();
+        }
+        if ($end instanceof DateTimeInterface) {
+            $end = $end->getTimestamp();
+        }
 
-    public function getNextInQueue(Entity\Station $station): ?Entity\SongHistory
-    {
-        return $this->getUpcomingBaseQuery($station)
-            ->andWhere('sh.sent_to_autodj = 0')
-            ->getQuery()
-            ->setMaxResults(1)
-            ->getOneOrNullResult();
-    }
-
-    public function getUpcomingFromSong(Entity\Station $station, Entity\Song $song): ?Entity\SongHistory
-    {
-        return $this->getUpcomingBaseQuery($station)
-            ->andWhere('sh.song = :song')
-            ->setParameter('song', $song)
-            ->getQuery()
-            ->setMaxResults(1)
-            ->getOneOrNullResult();
-    }
-
-    protected function getUpcomingBaseQuery(Entity\Station $station): QueryBuilder
-    {
-        return $this->em->createQueryBuilder()
-            ->select('sh, sm, sp, s')
-            ->from(Entity\SongHistory::class, 'sh')
-            ->leftJoin('sh.media', 'sm')
-            ->leftJoin('sh.song', 's')
-            ->leftJoin('sh.playlist', 'sp')
-            ->where('sh.station = :station')
+        $historyTotals = $this->em->createQuery(/** @lang DQL */ '
+            SELECT
+                AVG(sh.listeners_end) AS listeners_avg,
+                MAX(sh.listeners_end) AS listeners_max,
+                MIN(sh.listeners_end) AS listeners_min
+            FROM App\Entity\SongHistory sh
+            WHERE sh.station = :station
+            AND sh.timestamp_end >= :start
+            AND sh.timestamp_start <= :end')
             ->setParameter('station', $station)
-            ->andWhere('sh.timestamp_cued != 0')
-            ->andWhere('sh.timestamp_start = 0')
-            ->orderBy('sh.timestamp_cued', 'ASC');
+            ->setParameter('start', $start)
+            ->setParameter('end', $end)
+            ->getSingleResult();
+
+        $min = (int)$historyTotals['listeners_min'];
+        $max = (int)$historyTotals['listeners_max'];
+        $avg = round((float)$historyTotals['listeners_avg'], 2);
+
+        return [$min, $max, $avg];
+    }
+
+    public function cleanup(int $daysToKeep): void
+    {
+        $threshold = CarbonImmutable::now()
+            ->subDays($daysToKeep)
+            ->getTimestamp();
+
+        $this->em->createQuery(/** @lang DQL */ 'DELETE
+                FROM App\Entity\SongHistory sh
+                WHERE sh.timestamp_start != 0
+                AND sh.timestamp_start <= :threshold')
+            ->setParameter('threshold', $threshold)
+            ->execute();
     }
 }

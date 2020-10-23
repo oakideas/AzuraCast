@@ -77,7 +77,7 @@ return function (App $app) {
                 ->add(new Middleware\Permissions(Acl::GLOBAL_LOGS));
 
             $group->get('/permissions', Controller\Api\Admin\PermissionsController::class)
-                ->add(new Middleware\Permissions(Acl::GLOBAL_PERMISSIONS));
+                ->add(new Middleware\Permissions(Acl::GLOBAL_ALL));
 
             $group->map(['GET', 'POST'], '/relays', function (ServerRequest $request, Response $response) {
                 return $response->withRedirect((string)$request->getRouter()->fromHere('api:internal:relays'));
@@ -97,9 +97,9 @@ return function (App $app) {
                     Controller\Api\Admin\CustomFieldsController::class,
                     Acl::GLOBAL_CUSTOM_FIELDS,
                 ],
-                ['role', 'roles', Controller\Api\Admin\RolesController::class, Acl::GLOBAL_PERMISSIONS],
+                ['role', 'roles', Controller\Api\Admin\RolesController::class, Acl::GLOBAL_ALL],
                 ['station', 'stations', Controller\Api\Admin\StationsController::class, Acl::GLOBAL_STATIONS],
-                ['user', 'users', Controller\Api\Admin\UsersController::class, Acl::GLOBAL_USERS],
+                ['user', 'users', Controller\Api\Admin\UsersController::class, Acl::GLOBAL_ALL],
             ];
 
             foreach ($admin_api_endpoints as [$singular, $plural, $class, $permission]) {
@@ -224,12 +224,12 @@ return function (App $app) {
 
                 $group->map(['GET', 'POST'], '/upload', Controller\Api\Stations\Files\FlowUploadAction::class)
                     ->setName('api:stations:files:upload');
-
-                $group->get('/download', Controller\Api\Stations\Files\DownloadAction::class)
-                    ->setName('api:stations:files:download');
-
             })
                 ->add(Middleware\Module\StationFiles::class)
+                ->add(new Middleware\Permissions(Acl::STATION_MEDIA, true));
+
+            $group->get('/download/{id}', Controller\Api\Stations\Files\DownloadAction::class)
+                ->setName('api:stations:file:download')
                 ->add(new Middleware\Permissions(Acl::STATION_MEDIA, true));
 
             $group->get('/playlists/schedule', Controller\Api\Stations\PlaylistsController::class . ':scheduleAction')

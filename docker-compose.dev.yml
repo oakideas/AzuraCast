@@ -5,7 +5,7 @@ services:
     build:
       context: ../docker-azuracast-nginx-proxy
     volumes:
-      - ./util/local_ssl:/etc/nginx/certs:ro
+      - ./util/local_ssl:/etc/nginx/certs
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
   web:
@@ -13,6 +13,7 @@ services:
       context: .
     volumes:
       - ./util/local_ssl:/etc/nginx/certs:ro
+      - ./vendor:/var/azuracast/www/vendor
       - .:/var/azuracast/www
 
   mariadb:
@@ -20,10 +21,6 @@ services:
       context: ../docker-azuracast-db
     ports:
       - "127.0.0.1:3306:3306"
-
-  influxdb:
-    build:
-      context: ../docker-azuracast-influxdb
 
   redis:
     build:

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Radio\Remote;
 
 use App\Entity;
@@ -52,9 +53,10 @@ abstract class AbstractRemote
 
         $npAdapter = $this->adapterFactory->getAdapter(
             $adapterType,
-            $remote->getUrl(),
-            $remote->getAdminPassword()
+            $remote->getUrl()
         );
+
+        $npAdapter->setAdminPassword($remote->getAdminPassword());
 
         try {
             $npRemote = $npAdapter->getNowPlaying($remote->getMount(), $includeClients);
@@ -80,8 +82,6 @@ abstract class AbstractRemote
      * Return the likely "public" listen URL for the remote.
      *
      * @param Entity\StationRemote $remote
-     *
-     * @return string
      */
     public function getPublicUrl(Entity\StationRemote $remote): string
     {
@@ -96,15 +96,13 @@ abstract class AbstractRemote
      * Format and return a URL for the remote path.
      *
      * @param Entity\StationRemote $remote
-     * @param null $custom_path
-     *
-     * @return string
+     * @param string|null $custom_path
      */
     protected function getRemoteUrl(Entity\StationRemote $remote, $custom_path = null): string
     {
         $uri = new Uri($remote->getUrl());
 
-        return ($custom_path !== null)
+        return (null !== $custom_path)
             ? (string)$uri->withPath($custom_path)
             : (string)$uri;
     }

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Admin;
 
 use App\Entity;
@@ -21,9 +22,9 @@ class UsersController extends AbstractAdminCrudController
 
     public function indexAction(ServerRequest $request, Response $response): ResponseInterface
     {
-        $users = $this->em->createQuery(/** @lang DQL */ 'SELECT 
-            u, r 
-            FROM App\Entity\User u 
+        $users = $this->em->createQuery(/** @lang DQL */ 'SELECT
+            u, r
+            FROM App\Entity\User u
             LEFT JOIN u.roles r
             ORDER BY u.name ASC')
             ->execute();
@@ -38,14 +39,16 @@ class UsersController extends AbstractAdminCrudController
     public function editAction(ServerRequest $request, Response $response, $id = null): ResponseInterface
     {
         try {
-            if (false !== $this->_doEdit($request, $id)) {
+            if (false !== $this->doEdit($request, $id)) {
                 $request->getFlash()->addMessage(($id ? __('User updated.') : __('User added.')), Flash::SUCCESS);
 
                 return $response->withRedirect($request->getRouter()->named('admin:users:index'));
             }
         } catch (UniqueConstraintViolationException $e) {
-            $request->getFlash()->addMessage(__('Another user already exists with this e-mail address. Please update the e-mail address.'),
-                Flash::ERROR);
+            $request->getFlash()->addMessage(
+                __('Another user already exists with this e-mail address. Please update the e-mail address.'),
+                Flash::ERROR
+            );
         }
 
         return $request->getView()->renderToResponse($response, 'system/form_page', [
@@ -92,8 +95,10 @@ class UsersController extends AbstractAdminCrudController
         $auth = $request->getAuth();
         $auth->masqueradeAsUser($user);
 
-        $request->getFlash()->addMessage('<b>' . __('Logged in successfully.') . '</b><br>' . $user->getEmail(),
-            Flash::SUCCESS);
+        $request->getFlash()->addMessage(
+            '<b>' . __('Logged in successfully.') . '</b><br>' . $user->getEmail(),
+            Flash::SUCCESS
+        );
 
         return $response->withRedirect($request->getRouter()->named('dashboard'));
     }

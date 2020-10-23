@@ -1,17 +1,17 @@
 <?php
+
 namespace App\Entity;
 
 use App\Annotations\AuditLog;
 use App\Normalizer\Annotation\DeepNormalize;
-use Carbon\CarbonImmutable;
-use Carbon\CarbonInterface;
-use DateTimeZone;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use OpenApi\Annotations as OA;
 use Symfony\Component\Serializer\Annotation as Serializer;
 use Symfony\Component\Validator\Constraints as Assert;
+
+use const PASSWORD_ARGON2ID;
 
 /**
  * Station streamers (DJ accounts) allowed to broadcast to a station.
@@ -132,7 +132,7 @@ class StationStreamer
     public function __construct(Station $station)
     {
         $this->station = $station;
-        $this->schedule_items = new ArrayCollection;
+        $this->schedule_items = new ArrayCollection();
     }
 
     public function getId(): int
@@ -165,7 +165,7 @@ class StationStreamer
         $streamer_password = trim($streamer_password);
 
         if (!empty($streamer_password)) {
-            $this->streamer_password = password_hash($streamer_password, \PASSWORD_ARGON2ID);
+            $this->streamer_password = password_hash($streamer_password, PASSWORD_ARGON2ID);
         }
     }
 
@@ -176,7 +176,6 @@ class StationStreamer
 
     /**
      * @AuditLog\AuditIdentifier()
-     * @return string
      */
     public function getDisplayName(): string
     {
@@ -247,27 +246,5 @@ class StationStreamer
     public function getScheduleItems(): Collection
     {
         return $this->schedule_items;
-    }
-
-    public function canStreamNow(CarbonInterface $now = null): bool
-    {
-        if (!$this->enforceSchedule()) {
-            return true;
-        }
-
-        if (null === $now) {
-            $now = CarbonImmutable::now(new DateTimeZone($this->getStation()->getTimezone()));
-        }
-
-        if ($this->schedule_items->count() > 0) {
-            foreach ($this->schedule_items as $scheduleItem) {
-                /** @var StationSchedule $scheduleItem */
-                if ($scheduleItem->shouldPlayNow($now)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 }

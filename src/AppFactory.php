@@ -1,4 +1,5 @@
 <?php
+
 namespace App;
 
 use App\Http\Factory\ServerRequestFactory;
@@ -34,11 +35,10 @@ class AppFactory
 
         // Override DI definitions for settings.
         $diDefinitions[Settings::class] = $settings;
-        $diDefinitions['settings'] = DI\get(Settings::class);
+        $diDefinitions['settings'] = DI\Get(Settings::class);
 
         if ($autoloader) {
             $plugins = new Plugins($settings[Settings::BASE_DIR] . '/plugins');
-            $plugins->registerAutoloaders($autoloader);
 
             $diDefinitions[Plugins::class] = $plugins;
             $diDefinitions = $plugins->registerServices($diDefinitions);
@@ -51,7 +51,7 @@ class AppFactory
         Logger::setInstance($di->get(LoggerInterface::class));
 
         ServerRequestCreatorFactory::setSlimHttpDecoratorsAutomaticDetection(false);
-        ServerRequestCreatorFactory::setServerRequestCreator(new ServerRequestFactory);
+        ServerRequestCreatorFactory::setServerRequestCreator(new ServerRequestFactory());
 
         $app = self::createFromContainer($di);
         $di->set(App::class, $app);
@@ -62,6 +62,9 @@ class AppFactory
         return $app;
     }
 
+    /**
+     * @return mixed[]
+     */
     protected static function buildSettings(array $settings): array
     {
         if (!isset($settings[Settings::BASE_DIR])) {
@@ -123,23 +126,30 @@ class AppFactory
 
     protected static function applyPhpSettings(Settings $settings): void
     {
-        ini_set('display_startup_errors', !$settings->isProduction() ? 1 : 0);
-        ini_set('display_errors', !$settings->isProduction() ? 1 : 0);
-        ini_set('log_errors', 1);
-        ini_set('error_log',
-            $settings[Settings::IS_DOCKER] ? '/dev/stderr' : $settings[Settings::TEMP_DIR] . '/php_errors.log');
-        ini_set('error_reporting', E_ALL & ~E_NOTICE & ~E_WARNING & ~E_STRICT);
-        ini_set('session.use_only_cookies', 1);
-        ini_set('session.cookie_httponly', 1);
-        ini_set('session.cookie_lifetime', 86400);
-        ini_set('session.use_strict_mode', 1);
+        error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING & ~E_STRICT);
+
+        ini_set('display_startup_errors', !$settings->isProduction() ? '1' : '0');
+        ini_set('display_errors', !$settings->isProduction() ? '1' : '0');
+        ini_set('log_errors', '1');
+        ini_set(
+            'error_log',
+            $settings[Settings::IS_DOCKER]
+                ? '/dev/stderr'
+                : $settings[Settings::TEMP_DIR] . '/php_errors.log'
+        );
+        ini_set('session.use_only_cookies', '1');
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_lifetime', '86400');
+        ini_set('session.use_strict_mode', '1');
+
+        date_default_timezone_set('UTC');
 
         session_cache_limiter('');
     }
 
     protected static function buildContainer(Settings $settings, array $diDefinitions = []): DI\Container
     {
-        $containerBuilder = new DI\ContainerBuilder;
+        $containerBuilder = new DI\ContainerBuilder();
         $containerBuilder->useAnnotations(true);
         $containerBuilder->useAutowiring(true);
 
@@ -167,7 +177,7 @@ class AppFactory
     {
         $responseFactory = $container->has(ResponseFactoryInterface::class)
             ? $container->get(ResponseFactoryInterface::class)
-            : new Http\Factory\ResponseFactory;
+            : new Http\Factory\ResponseFactory();
 
         $callableResolver = $container->has(CallableResolverInterface::class)
             ? $container->get(CallableResolverInterface::class)

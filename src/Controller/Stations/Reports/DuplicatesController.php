@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Stations\Reports;
 
 use App\Entity;
@@ -32,9 +33,8 @@ class DuplicatesController
         $station = $request->getStation();
 
         $dupesRaw = $this->em->createQuery(/** @lang DQL */ 'SELECT
-            sm, s, spm, sp
+            sm, spm, sp
             FROM App\Entity\StationMedia sm
-            JOIN sm.song s
             LEFT JOIN sm.playlists spm
             LEFT JOIN spm.playlist sp
             WHERE sm.station = :station
@@ -43,7 +43,7 @@ class DuplicatesController
                 App\Entity\StationMedia sm2
                 WHERE sm2.station = :station
                 GROUP BY sm2.song_id
-                HAVING COUNT(sm2.id) > 1                 
+                HAVING COUNT(sm2.id) > 1
             )
             ORDER BY sm.song_id ASC, sm.mtime ASC')
             ->setParameter('station', $station)
@@ -76,7 +76,11 @@ class DuplicatesController
             $request->getFlash()->addMessage('<b>Duplicate file deleted!</b>', Flash::SUCCESS);
         }
 
-        return $response->withRedirect($request->getRouter()->named('stations:reports:duplicates',
-            ['station_id' => $station->getId()]));
+        return $response->withRedirect(
+            $request->getRouter()->named(
+                'stations:reports:duplicates',
+                ['station_id' => $station->getId()]
+            )
+        );
     }
 }

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Api\Stations;
 
 use App\Entity;
@@ -29,15 +30,17 @@ class ServicesController
      *   tags={"Stations: Service Control"},
      *   description="Retrieve the current status of all serivces associated with the radio broadcast.",
      *   @OA\Parameter(ref="#/components/parameters/station_id_required"),
-     *   @OA\Response(response=200, description="Success", @OA\Schema(ref="#/components/schemas/Api_StationServiceStatus")),
+     *   @OA\Response(
+     *     response=200,
+     *     description="Success",
+     *     @OA\Schema(ref="#/components/schemas/Api_StationServiceStatus")
+     *   ),
      *   @OA\Response(response=403, description="Access Forbidden", @OA\Schema(ref="#/components/schemas/Api_Error")),
      *   security={{"api_key": {}}}
      * )
      *
      * @param ServerRequest $request
      * @param Response $response
-     *
-     * @return ResponseInterface
      */
     public function statusAction(ServerRequest $request, Response $response): ResponseInterface
     {
@@ -64,8 +67,6 @@ class ServicesController
      *
      * @param ServerRequest $request
      * @param Response $response
-     *
-     * @return ResponseInterface
      */
     public function restartAction(ServerRequest $request, Response $response): ResponseInterface
     {
@@ -98,8 +99,6 @@ class ServicesController
      * @param ServerRequest $request
      * @param Response $response
      * @param string $do
-     *
-     * @return ResponseInterface
      */
     public function frontendAction(
         ServerRequest $request,
@@ -114,13 +113,11 @@ class ServicesController
                 $frontend->stop($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Frontend stopped.')));
-                break;
 
             case 'start':
                 $frontend->start($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Frontend started.')));
-                break;
 
             case 'restart':
             default:
@@ -133,7 +130,6 @@ class ServicesController
                 $frontend->start($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Frontend restarted.')));
-                break;
         }
     }
 
@@ -161,8 +157,6 @@ class ServicesController
      * @param Response $response
      * @param AutoDJ $autodj
      * @param string $do
-     *
-     * @return ResponseInterface
      */
     public function backendAction(
         ServerRequest $request,
@@ -188,7 +182,6 @@ class ServicesController
                 }
 
                 return $response->withJson(new Entity\Api\Status(true, __('Song skipped.')));
-                break;
 
             case 'disconnect':
                 if ($backend instanceof Liquidsoap) {
@@ -196,19 +189,16 @@ class ServicesController
                 }
 
                 return $response->withJson(new Entity\Api\Status(true, __('Streamer disconnected.')));
-                break;
 
             case 'stop':
                 $backend->stop($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Backend stopped.')));
-                break;
 
             case 'start':
                 $backend->start($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Backend started.')));
-                break;
 
             case 'restart':
             default:
@@ -221,8 +211,6 @@ class ServicesController
                 $backend->start($station);
 
                 return $response->withJson(new Entity\Api\Status(true, __('Backend restarted.')));
-                break;
         }
     }
-
 }

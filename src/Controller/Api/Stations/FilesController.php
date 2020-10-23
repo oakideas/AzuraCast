@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Api\Stations;
 
 use App\Entity;
@@ -31,8 +32,6 @@ class FilesController extends AbstractStationApiCrudController
 
     protected Entity\Repository\CustomFieldRepository $custom_fields_repo;
 
-    protected Entity\Repository\SongRepository $song_repo;
-
     protected Entity\Repository\StationMediaRepository $media_repo;
 
     protected Entity\Repository\StationPlaylistMediaRepository $playlist_media_repo;
@@ -45,7 +44,6 @@ class FilesController extends AbstractStationApiCrudController
         Adapters $adapters,
         MessageBus $messageBus,
         Entity\Repository\CustomFieldRepository $custom_fields_repo,
-        Entity\Repository\SongRepository $song_repo,
         Entity\Repository\StationMediaRepository $media_repo,
         Entity\Repository\StationPlaylistMediaRepository $playlist_media_repo
     ) {
@@ -57,7 +55,6 @@ class FilesController extends AbstractStationApiCrudController
 
         $this->custom_fields_repo = $custom_fields_repo;
         $this->media_repo = $media_repo;
-        $this->song_repo = $song_repo;
         $this->playlist_media_repo = $playlist_media_repo;
     }
 
@@ -91,8 +88,6 @@ class FilesController extends AbstractStationApiCrudController
      *
      * @param ServerRequest $request
      * @param Response $response
-     *
-     * @return ResponseInterface
      */
     public function createAction(ServerRequest $request, Response $response): ResponseInterface
     {
@@ -124,7 +119,7 @@ class FilesController extends AbstractStationApiCrudController
         $sanitized_path = Filesystem::PREFIX_MEDIA . '://' . $api_record->getSanitizedPath();
 
         // Process temp path as regular media record.
-        $record = $this->media_repo->uploadFile($station, $temp_path, $sanitized_path);
+        $record = $this->media_repo->getOrCreate($station, $sanitized_path, $temp_path);
 
         $return = $this->viewRecord($record, $request);
 
@@ -193,7 +188,7 @@ class FilesController extends AbstractStationApiCrudController
     /**
      * @inheritDoc
      */
-    protected function getRecord(Entity\Station $station, $id)
+    protected function getRecord(Entity\Station $station, $id): ?object
     {
         $repo = $this->em->getRepository($this->entityClass);
 
@@ -216,7 +211,7 @@ class FilesController extends AbstractStationApiCrudController
     /**
      * @inheritDoc
      */
-    protected function toArray($record, array $context = [])
+    protected function toArray($record, array $context = []): array
     {
         $row = parent::toArray($record, $context);
 
@@ -257,16 +252,7 @@ class FilesController extends AbstractStationApiCrudController
             $this->em->flush();
 
             if ($this->media_repo->writeToFile($record)) {
-                $song_info = [
-                    'title' => $record->getTitle(),
-                    'artist' => $record->getArtist(),
-                ];
-
-                $song = $this->song_repo->getOrCreate($song_info);
-                $song->update($song_info);
-                $this->em->persist($song);
-
-                $record->setSong($song);
+                $record->updateSongId();
             }
 
             if (null !== $custom_fields) {
@@ -281,6 +267,8 @@ class FilesController extends AbstractStationApiCrudController
 
                 // Remove existing playlists.
                 $media_playlists = $this->playlist_media_repo->clearPlaylistsFromMedia($record);
+                $this->em->flush();
+
                 foreach ($media_playlists as $playlist_id => $playlist) {
                     if (!isset($affected_playlists[$playlist_id])) {
                         $affected_playlists[$playlist_id] = $playlist;
@@ -313,7 +301,7 @@ class FilesController extends AbstractStationApiCrudController
                 if ($backend instanceof Liquidsoap) {
                     foreach ($affected_playlists as $playlist_id => $playlist_row) {
                         // Instruct the message queue to start a new "write playlist to file" task.
-                        $message = new WritePlaylistFileMessage;
+                        $message = new WritePlaylistFileMessage();
                         $message->playlist_id = $playlist_id;
 
                         $this->messageBus->dispatch($message);
@@ -357,7 +345,7 @@ class FilesController extends AbstractStationApiCrudController
         if ($backend instanceof Liquidsoap) {
             foreach ($affected_playlists as $playlist_id => $playlist_row) {
                 // Instruct the message queue to start a new "write playlist to file" task.
-                $message = new WritePlaylistFileMessage;
+                $message = new WritePlaylistFileMessage();
                 $message->playlist_id = $playlist_id;
 
                 $this->messageBus->dispatch($message);

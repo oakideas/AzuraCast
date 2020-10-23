@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller\Api\Stations\Files;
 
 use App\Entity;
@@ -36,7 +37,7 @@ class RenameAction
         }
 
         $station = $request->getStation();
-        $fs = $filesystem->getForStation($station);
+        $fs = $filesystem->getForStation($station, false);
 
         $originalPathFull = $request->getAttribute('file_path');
         $newPathFull = Filesystem::PREFIX_MEDIA . '://' . $newPath;
@@ -58,6 +59,19 @@ class RenameAction
                 /** @var Entity\StationMedia $media_row */
                 $media_row->setPath(substr_replace($media_row->getPath(), $newPath, 0, strlen($originalPath)));
                 $em->persist($media_row);
+            }
+
+            // Update the paths of all media contained within the directory.
+            $playlistFolders = $em->createQuery(/** @lang DQL */ 'SELECT spf FROM App\Entity\StationPlaylistFolder spf
+                        WHERE spf.station = :station AND spf.path LIKE :path')
+                ->setParameter('station', $station)
+                ->setParameter('path', $originalPath . '%')
+                ->execute();
+
+            foreach ($playlistFolders as $row) {
+                /** @var Entity\StationPlaylistFolder $row */
+                $row->setPath(substr_replace($row->getPath(), $newPath, 0, strlen($originalPath)));
+                $em->persist($row);
             }
 
             $em->flush();

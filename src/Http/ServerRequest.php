@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http;
 
 use App\Acl;
@@ -143,18 +144,23 @@ final class ServerRequest extends \Slim\Http\ServerRequest
 
     /**
      * Get the remote user's IP address as indicated by HTTP headers.
-     * @return string|null
      */
     public function getIp(): ?string
     {
         $params = $this->serverRequest->getServerParams();
 
-        return $params['HTTP_CLIENT_IP']
+        $ip = $params['HTTP_CLIENT_IP']
             ?? $params['HTTP_X_FORWARDED_FOR']
             ?? $params['HTTP_X_FORWARDED']
             ?? $params['HTTP_FORWARDED_FOR']
             ?? $params['HTTP_FORWARDED']
             ?? $params['REMOTE_ADDR']
-            ?? null;
+            ?? '';
+
+        // Handle the IP being separated by commas.
+        $ipParts = explode(',', $ip);
+        $ip = array_shift($ipParts);
+
+        return trim($ip);
     }
 }

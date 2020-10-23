@@ -159,7 +159,7 @@ return [
         'files' => [
             'js' => [
                 [
-                    'src' => 'dist/lib/sweetalert/sweetalert.min.js',
+                    'src' => 'dist/lib/sweetalert2/sweetalert2.min.js',
                     'defer' => true,
                 ],
                 [
@@ -488,6 +488,24 @@ return [
     'StationOnDemand' => [
         'order' => 10,
         'require' => ['vue-component-common', 'bootstrap-vue'],
+        // Auto-managed by Assets
+    ],
+
+    'PublicRadioPlayer' => [
+        'order' => 10,
+        'require' => ['vue-component-common', 'bootstrap-vue', 'moment'],
+        // Auto-managed by Assets
+    ],
+
+    'SongRequest' => [
+        'order' => 10,
+        'require' => ['vue-component-common', 'bootstrap-vue'],
+        // Auto-managed by Assets
+    ],
+
+    'StationProfile' => [
+        'order' => 10,
+        'require' => ['vue-component-common', 'bootstrap-vue', 'moment'],
         // Auto-managed by Assets
     ],
 ];

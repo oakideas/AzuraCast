@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Flysystem;
 
 use App\Entity;
@@ -34,8 +35,12 @@ class Filesystem
 
     public function getForStation(Entity\Station $station, bool $cached = true): StationFilesystem
     {
-        $station_id = $station->getId();
-        if (!isset($this->interfaces[$station_id])) {
+        $stationId = $station->getId();
+        $interfaceKey = ($cached)
+            ? $stationId . '_cached'
+            : $stationId . '_uncached';
+
+        if (!isset($this->interfaces[$interfaceKey])) {
             $aliases = [
                 self::PREFIX_MEDIA => $station->getRadioMediaDir(),
                 self::PREFIX_ALBUM_ART => $station->getRadioAlbumArtDir(),
@@ -58,10 +63,10 @@ class Filesystem
                 $filesystems[$alias] = new LeagueFilesystem($adapter);
             }
 
-            $this->interfaces[$station_id] = new StationFilesystem($filesystems);
+            $this->interfaces[$interfaceKey] = new StationFilesystem($filesystems);
         }
 
-        return $this->interfaces[$station_id];
+        return $this->interfaces[$interfaceKey];
     }
 
     protected function normalizeCacheKey(string $path): string

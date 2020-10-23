@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Entity\Repository;
 
 use App\Doctrine\Repository;
@@ -57,8 +58,6 @@ class StationRepository extends Repository
 
     /**
      * @param string $identifier A numeric or string identifier for a station.
-     *
-     * @return Entity\Station|null
      */
     public function findByIdentifier(string $identifier): ?Entity\Station
     {
@@ -77,12 +76,12 @@ class StationRepository extends Repository
     }
 
     /**
-     * @param bool $add_blank
+     * @param bool|string $add_blank
      * @param Closure|NULL $display
      * @param string $pk
      * @param string $order_by
      *
-     * @return array
+     * @return mixed[]
      */
     public function fetchSelect($add_blank = false, Closure $display = null, $pk = 'id', $order_by = 'name'): array
     {
@@ -108,22 +107,17 @@ class StationRepository extends Repository
 
     /**
      * @param string $short_code
-     *
-     * @return null|object
      */
-    public function findByShortCode($short_code)
+    public function findByShortCode($short_code): ?Entity\Station
     {
         return $this->repository->findOneBy(['short_name' => $short_code]);
     }
 
     /**
      * @param Entity\Station $record
-     *
-     * @return Entity\Station
      */
     public function edit(Entity\Station $record): Entity\Station
     {
-        /** @var Entity\Station $original_record */
         $original_record = $this->em->getUnitOfWork()->getOriginalEntityData($record);
 
         // Get the original values to check for changes.
@@ -172,14 +166,13 @@ class StationRepository extends Repository
         }
 
         $this->em->flush();
+        $this->em->refresh($station);
     }
 
     /**
      * Handle tasks necessary to a station's creation.
      *
      * @param Entity\Station $station
-     *
-     * @return Entity\Station
      */
     public function create(Entity\Station $station): Entity\Station
     {
@@ -258,8 +251,6 @@ class StationRepository extends Repository
      * Return the URL to use for songs with no specified album artwork, when artwork is displayed.
      *
      * @param Entity\Station|null $station
-     *
-     * @return UriInterface
      */
     public function getDefaultAlbumArtUrl(?Entity\Station $station = null): UriInterface
     {

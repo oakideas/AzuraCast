@@ -1,15 +1,15 @@
 <?php
+
 namespace App\Event\Radio;
 
 use App\Entity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use DateTimeZone;
 use Symfony\Contracts\EventDispatcher\Event;
 
 class BuildQueue extends Event
 {
-    protected ?Entity\SongHistory $next_song = null;
+    protected ?Entity\StationQueue $next_song = null;
 
     protected Entity\Station $station;
 
@@ -19,7 +19,7 @@ class BuildQueue extends Event
     {
         $this->station = $station;
 
-        $this->now = $now ?? CarbonImmutable::now(new DateTimeZone($station->getTimezone()));
+        $this->now = $now ?? CarbonImmutable::now($station->getTimezoneObject());
     }
 
     public function getStation(): Entity\Station
@@ -32,12 +32,12 @@ class BuildQueue extends Event
         return $this->now;
     }
 
-    public function getNextSong(): ?Entity\SongHistory
+    public function getNextSong(): ?Entity\StationQueue
     {
         return $this->next_song;
     }
 
-    public function setNextSong(?Entity\SongHistory $next_song): bool
+    public function setNextSong(?Entity\StationQueue $next_song): bool
     {
         $this->next_song = $next_song;
 
@@ -54,7 +54,7 @@ class BuildQueue extends Event
         return (null !== $this->next_song);
     }
 
-    public function __toString()
+    public function __toString(): string
     {
         return (null !== $this->next_song)
             ? (string)$this->next_song

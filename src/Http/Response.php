@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http;
 
 use App\Flysystem\FilesystemGroup;
@@ -41,14 +42,13 @@ final class Response extends \Slim\Http\Response
             ->withHeader('Pragma', '')
             ->withHeader('Expires', gmdate('D, d M Y H:i:s \G\M\T', time() + $seconds))
             ->withHeader('Cache-Control', 'public, must-revalidate, max-age=' . $seconds)
-            ->withHeader('X-Accel-Expires', $seconds); // CloudFlare
+            ->withHeader('X-Accel-Expires', (string)$seconds); // CloudFlare
 
         return new static($response, $this->streamFactory);
     }
 
     /**
      * Returns whether the request has a "cache lifetime" assigned to it.
-     * @return bool
      */
     public function hasCacheLifetime(): bool
     {
@@ -66,8 +66,6 @@ final class Response extends \Slim\Http\Response
      * @param int|null $status
      * @param int $options
      * @param int $depth
-     *
-     * @return ResponseInterface
      */
     public function withJson($data, ?int $status = null, int $options = 0, int $depth = 512): ResponseInterface
     {
@@ -99,7 +97,7 @@ final class Response extends \Slim\Http\Response
             ->withHeader('Expires', '0')
             ->withHeader('Cache-Control', 'must-revalidate, post-check=0, pre-check=0')
             ->withHeader('Content-Type', mime_content_type($file_path))
-            ->withHeader('Content-Length', filesize($file_path))
+            ->withHeader('Content-Length', (string)filesize($file_path))
             ->withHeader('Content-Disposition', 'attachment; filename=' . $file_name)
             ->withBody($stream);
 
@@ -137,7 +135,7 @@ final class Response extends \Slim\Http\Response
         string $path,
         string $fileName = null,
         string $disposition = 'attachment'
-    ) {
+    ): ResponseInterface {
         $meta = $fs->getMetadata($path);
 
         try {
